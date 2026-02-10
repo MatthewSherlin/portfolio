@@ -1,26 +1,17 @@
+import { grantUnlock } from "./unlocks";
+
+export interface EasterEggResult {
+  output: string;
+  eggId: string;
+  startMeltdown?: boolean;
+}
+
 export function handleEasterEgg(
   command: string,
   args: string[]
-): { output: string; eggId: string } | null {
+): EasterEggResult | null {
   switch (command) {
     case "sudo": {
-      const sub = args.join(" ").toLowerCase();
-      if (sub.startsWith("hire")) {
-        return {
-          output: [
-            "  [sudo] password for visitor: ********",
-            "",
-            "  REQUEST APPROVED.",
-            "",
-            "  Initiating hiring sequence...",
-            "  ████████████████████████ 100%",
-            "",
-            "  Just kidding! But I appreciate the enthusiasm.",
-            "  Feel free to reach out: type 'contact' for details.",
-          ].join("\n"),
-          eggId: "sudo_hire",
-        };
-      }
       return {
         output:
           "  [sudo] password for visitor: ********\n  Sorry, visitor is not in the sudoers file.\n  This incident will be reported.",
@@ -30,21 +21,15 @@ export function handleEasterEgg(
 
     case "rm": {
       if (args.join(" ").includes("-rf") && args.some((a) => a.includes("/"))) {
+        grantUnlock("glitch_theme");
         return {
           output: [
-            "  Deleting system32...",
-            "  Removing all node_modules/ (this may take a while)...",
-            "  Erasing browser history...",
-            "  Deleting photos of your cat...",
-            "  Purging embarrassing search history...",
-            "  rm: cannot remove '/dev/humor': Device or resource busy",
-            "",
-            "  Just kidding! This is a virtual filesystem.",
-            "  Nothing was harmed in the making of this easter egg.",
-            "",
-            "  Try 'tree' to see what's actually here.",
+            "  rm: removing /system32/...",
+            "  rm: removing /boot/kernel...",
+            "  rm: fatal: filesystem corruption detected",
           ].join("\n"),
           eggId: "rm_rf",
+          startMeltdown: true,
         };
       }
       return null;
@@ -61,16 +46,6 @@ export function handleEasterEgg(
           "  (Try exploring with 'help' or 'cd ~/projects')",
         ].join("\n"),
         eggId: "exit",
-      };
-    }
-
-    case "vim":
-    case "emacs":
-    case "nano": {
-      const rival = command === "vim" ? "emacs" : "vim";
-      return {
-        output: `  Nice try. This terminal only supports ${rival}.\n  (Just kidding. Type 'help' for available commands.)`,
-        eggId: `editor_${command}`,
       };
     }
 

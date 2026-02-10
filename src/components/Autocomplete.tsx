@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import { useResponsive } from "@/hooks/useResponsive";
 
 export interface Suggestion {
   name: string;
@@ -13,14 +14,14 @@ interface AutocompleteProps {
   visible: boolean;
 }
 
-const MAX_VISIBLE = 8;
-
 export function Autocomplete({
   suggestions,
   selectedIndex,
   visible,
 }: AutocompleteProps) {
   const selectedRef = useRef<HTMLDivElement>(null);
+  const { isMobile } = useResponsive();
+  const maxVisible = isMobile ? 5 : 8;
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });
@@ -31,17 +32,17 @@ export function Autocomplete({
   return (
     <div className="absolute bottom-full left-0 w-full mb-1 z-10">
       <div
-        className="mx-4 border border-[var(--color-crt-dim)] rounded overflow-y-auto"
+        className="mx-2 sm:mx-4 border border-[var(--color-crt-dim)] rounded overflow-y-auto"
         style={{
           background: "var(--color-crt-bg)",
-          maxHeight: `${MAX_VISIBLE * 24}px`,
+          maxHeight: `${maxVisible * 24}px`,
         }}
       >
         {suggestions.map((s, i) => (
           <div
             key={s.name}
             ref={i === selectedIndex ? selectedRef : undefined}
-            className={`px-3 py-0.5 text-xs font-mono flex justify-between gap-4 ${
+            className={`px-3 py-0.5 text-crt-small font-mono flex justify-between gap-4 ${
               i === selectedIndex
                 ? "terminal-text"
                 : "terminal-text-dim"

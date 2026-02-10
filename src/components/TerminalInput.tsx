@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { Autocomplete, Suggestion } from "./Autocomplete";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface TerminalInputProps {
   value: string;
@@ -39,6 +40,7 @@ export function TerminalInput({
   showAutocomplete,
 }: TerminalInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { isMobile } = useResponsive();
 
   useEffect(() => {
     if (!disabled) {
@@ -89,7 +91,9 @@ export function TerminalInput({
 
   const prompt =
     mode === "command"
-      ? `visitor@portfolio:${currentPath}$`
+      ? isMobile
+        ? "~$"
+        : `visitor@portfolio:${currentPath}$`
       : "chat>";
 
   return (
@@ -100,10 +104,10 @@ export function TerminalInput({
         visible={showAutocomplete}
       />
       <div
-        className="flex items-center px-4 py-2 terminal-text"
+        className="flex items-center px-2 sm:px-4 py-2 terminal-text"
         onClick={() => inputRef.current?.focus()}
       >
-        <span className="terminal-text-dim mr-2 select-none whitespace-nowrap text-sm">
+        <span className="terminal-text-dim mr-2 select-none whitespace-nowrap">
           {prompt}
         </span>
         <input
@@ -113,7 +117,7 @@ export function TerminalInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          className="flex-1 bg-transparent border-none outline-none terminal-text font-mono text-sm caret-crt-text"
+          className="flex-1 bg-transparent border-none outline-none terminal-text font-mono caret-crt-text"
           autoFocus
           spellCheck={false}
           autoComplete="off"

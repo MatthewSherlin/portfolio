@@ -132,8 +132,24 @@ export const secretThemes: Record<string, Theme> = {
   },
 };
 
+/** Themes unlocked by easter eggs (not achievement-gated). */
+export const easterEggThemes: Record<string, Theme> = {
+  glitch: {
+    name: "glitch",
+    label: "GLITCH",
+    colors: {
+      bg: "#0a0008",
+      text: "#ff0040",
+      dim: "#880020",
+      error: "#ff00ff",
+      glow: "#ff0040",
+    },
+    threeGlow: 0xff0040,
+  },
+};
+
 export function getTheme(name: string): Theme | undefined {
-  return themes[name] || secretThemes[name];
+  return themes[name] || secretThemes[name] || easterEggThemes[name];
 }
 
 export function getThemeNames(includeSecret: boolean = false): string[] {
@@ -142,6 +158,25 @@ export function getThemeNames(includeSecret: boolean = false): string[] {
     names.push(...Object.keys(secretThemes));
   }
   return names;
+}
+
+// Pixel-art arrow cursor SVG template (fill color is injected)
+function arrowCursorSvg(color: string): string {
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='22' height='34' shape-rendering='crispEdges'><path fill='%23000' d='M0 0h2v2h-2zM0 2h4v2h-4zM0 4h2v2h-2zM4 4h2v2h-2zM0 6h2v2h-2zM6 6h2v2h-2zM0 8h2v2h-2zM8 8h2v2h-2zM0 10h2v2h-2zM10 10h2v2h-2zM0 12h2v2h-2zM12 12h2v2h-2zM0 14h2v2h-2zM14 14h2v2h-2zM0 16h2v2h-2zM16 16h2v2h-2zM0 18h2v2h-2zM18 18h2v2h-2zM0 20h2v2h-2zM12 20h10v2h-10zM0 22h2v2h-2zM6 22h2v2h-2zM12 22h2v2h-2zM0 24h2v2h-2zM4 24h2v2h-2zM8 24h2v2h-2zM14 24h2v2h-2zM0 26h4v2h-4zM8 26h2v2h-2zM14 26h2v2h-2zM0 28h2v2h-2zM10 28h2v2h-2zM16 28h2v2h-2zM10 30h2v2h-2zM16 30h2v2h-2zM12 32h4v2h-4z'/><path fill='${color}' d='M2 4h2v2h-2zM2 6h4v2h-4zM2 8h6v2h-6zM2 10h8v2h-8zM2 12h10v2h-10zM2 14h12v2h-12zM2 16h14v2h-14zM2 18h16v2h-16zM2 20h10v2h-10zM2 22h4v2h-4zM8 22h4v2h-4zM2 24h2v2h-2zM10 24h4v2h-4zM10 26h4v2h-4zM12 28h4v2h-4zM12 30h4v2h-4z'/></svg>`;
+}
+
+// Pixel-art pointer hand cursor SVG template
+function pointerCursorSvg(color: string): string {
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='28' shape-rendering='crispEdges'><path fill='%23000' d='M10 0h4v2h-4zM8 2h2v2h-2zM14 2h2v2h-2zM8 4h2v2h-2zM14 4h2v2h-2zM8 6h2v2h-2zM14 6h2v2h-2zM2 8h4v2h-4zM8 8h2v2h-2zM14 8h4v2h-4zM0 10h2v2h-2zM6 10h4v2h-4zM14 10h2v2h-2zM18 10h2v2h-2zM0 12h2v2h-2zM18 12h2v2h-2zM0 14h2v2h-2zM18 14h2v2h-2zM2 16h2v2h-2zM16 16h2v2h-2zM4 18h2v2h-2zM16 18h2v2h-2zM4 20h2v2h-2zM14 20h2v2h-2zM6 22h2v2h-2zM12 22h2v2h-2zM6 24h2v2h-2zM12 24h2v2h-2zM8 26h4v2h-4z'/><path fill='${color}' d='M10 2h4v2h-4zM10 4h4v2h-4zM10 6h4v2h-4zM10 8h4v2h-4zM2 10h4v2h-4zM10 10h4v2h-4zM16 10h2v2h-2zM2 12h16v2h-16zM2 14h16v2h-16zM4 16h12v2h-12zM6 18h10v2h-10zM6 20h8v2h-8zM8 22h4v2h-4zM8 24h4v2h-4z'/></svg>`;
+}
+
+function setCursorProperties(root: HTMLElement, color: string) {
+  // URL-encode the # in the hex color for data URI
+  const encoded = color.replace("#", "%23");
+  const arrow = `url("data:image/svg+xml,${arrowCursorSvg(encoded)}") 1 1, default`;
+  const pointer = `url("data:image/svg+xml,${pointerCursorSvg(encoded)}") 11 1, pointer`;
+  root.style.setProperty("--cursor-arrow", arrow);
+  root.style.setProperty("--cursor-pointer", pointer);
 }
 
 export function applyTheme(theme: Theme) {
@@ -157,6 +192,7 @@ export function applyTheme(theme: Theme) {
     "--color-crt-error-rgb",
     hexToRgb(theme.colors.error)
   );
+  setCursorProperties(root, theme.colors.text);
 
   localStorage.setItem("theme", theme.name);
   window.dispatchEvent(new CustomEvent("themechange", { detail: theme }));
@@ -165,5 +201,5 @@ export function applyTheme(theme: Theme) {
 export function loadSavedTheme(): Theme {
   if (typeof window === "undefined") return themes.amber;
   const saved = localStorage.getItem("theme");
-  return (saved && (themes[saved] || secretThemes[saved])) || themes.amber;
+  return (saved && (themes[saved] || secretThemes[saved] || easterEggThemes[saved])) || themes.amber;
 }

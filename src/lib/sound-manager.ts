@@ -318,6 +318,325 @@ class SoundManager {
       setTimeout(() => this.playTone(freq, 0.2, "square", 0.15), i * 150);
     });
   }
+
+  /** CRT power-on: relay thunk, capacitor charge whine, hum fade-in. */
+  powerOn() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // --- Layer 1: Relay / degauss thunk ---
+      const thunkSrc = ctx.createBufferSource();
+      thunkSrc.buffer = this.getNoiseBuffer(ctx);
+      const thunkBP = ctx.createBiquadFilter();
+      thunkBP.type = "bandpass";
+      thunkBP.frequency.value = 120;
+      thunkBP.Q.value = 0.8;
+      const thunkGain = ctx.createGain();
+      thunkGain.gain.setValueAtTime(0.5, now);
+      thunkGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      thunkSrc.connect(thunkBP);
+      thunkBP.connect(thunkGain);
+      thunkGain.connect(ctx.destination);
+      thunkSrc.start(now);
+      thunkSrc.stop(now + 0.15);
+
+      // --- Layer 2: Low-mid capacitor charge hum (rising pitch, warm) ---
+      const whineOsc = ctx.createOscillator();
+      whineOsc.type = "sine";
+      whineOsc.frequency.setValueAtTime(80, now + 0.08);
+      whineOsc.frequency.exponentialRampToValueAtTime(400, now + 0.6);
+      const whineGain = ctx.createGain();
+      whineGain.gain.setValueAtTime(0.001, now);
+      whineGain.gain.linearRampToValueAtTime(0.0, now + 0.08);
+      whineGain.gain.linearRampToValueAtTime(0.08, now + 0.25);
+      whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+      whineOsc.connect(whineGain);
+      whineGain.connect(ctx.destination);
+      whineOsc.start(now + 0.08);
+      whineOsc.stop(now + 0.7);
+
+      // --- Layer 3: Electrical buzz building ---
+      const buzzOsc = ctx.createOscillator();
+      buzzOsc.type = "sawtooth";
+      buzzOsc.frequency.value = 60;
+      const buzzGain = ctx.createGain();
+      buzzGain.gain.setValueAtTime(0.001, now);
+      buzzGain.gain.linearRampToValueAtTime(0.04, now + 0.3);
+      buzzGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      buzzOsc.connect(buzzGain);
+      buzzGain.connect(ctx.destination);
+      buzzOsc.start(now);
+      buzzOsc.stop(now + 0.6);
+    } catch {
+      // Audio context may not be available
+    }
+  }
+
+  /** CRT power-down: descending whine, degauss buzz, low thump. */
+  powerDown() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // --- Layer 1: Descending high-voltage whine ---
+      const whineOsc = ctx.createOscillator();
+      whineOsc.type = "sine";
+      whineOsc.frequency.setValueAtTime(15500, now);
+      whineOsc.frequency.exponentialRampToValueAtTime(60, now + 0.5);
+      const whineGain = ctx.createGain();
+      whineGain.gain.setValueAtTime(0.07, now);
+      whineGain.gain.linearRampToValueAtTime(0.04, now + 0.2);
+      whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      whineOsc.connect(whineGain);
+      whineGain.connect(ctx.destination);
+      whineOsc.start(now);
+      whineOsc.stop(now + 0.6);
+
+      // --- Layer 2: Degauss buzz (60Hz sawtooth dying off) ---
+      const buzzOsc = ctx.createOscillator();
+      buzzOsc.type = "sawtooth";
+      buzzOsc.frequency.value = 60;
+      const buzzGain = ctx.createGain();
+      buzzGain.gain.setValueAtTime(0.05, now);
+      buzzGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      buzzOsc.connect(buzzGain);
+      buzzGain.connect(ctx.destination);
+      buzzOsc.start(now);
+      buzzOsc.stop(now + 0.45);
+
+      // --- Layer 3: Low power-supply thump ---
+      const thumpOsc = ctx.createOscillator();
+      thumpOsc.type = "sine";
+      thumpOsc.frequency.setValueAtTime(80, now + 0.05);
+      thumpOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+      const thumpGain = ctx.createGain();
+      thumpGain.gain.setValueAtTime(0.001, now);
+      thumpGain.gain.setValueAtTime(0.35, now + 0.05);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      thumpOsc.connect(thumpGain);
+      thumpGain.connect(ctx.destination);
+      thumpOsc.start(now + 0.05);
+      thumpOsc.stop(now + 0.3);
+
+      // --- Layer 4: Noise crackle as CRT discharges ---
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = this.getNoiseBuffer(ctx);
+      const noiseHP = ctx.createBiquadFilter();
+      noiseHP.type = "highpass";
+      noiseHP.frequency.value = 3000;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.15, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      noiseSrc.connect(noiseHP);
+      noiseHP.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + 0.1);
+    } catch {
+      // Audio context may not be available
+    }
+  }
+
+  /** Light mouse-click for GUI interactions. */
+  guiClick() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // Short, crisp click transient
+      const clickOsc = ctx.createOscillator();
+      clickOsc.type = "square";
+      clickOsc.frequency.setValueAtTime(2400, now);
+      clickOsc.frequency.exponentialRampToValueAtTime(800, now + 0.008);
+      const clickGain = ctx.createGain();
+      clickGain.gain.setValueAtTime(0.15, now);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+      clickOsc.connect(clickGain);
+      clickGain.connect(ctx.destination);
+      clickOsc.start(now);
+      clickOsc.stop(now + 0.02);
+
+      // Tiny noise texture
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = this.getNoiseBuffer(ctx);
+      const noiseLP = ctx.createBiquadFilter();
+      noiseLP.type = "bandpass";
+      noiseLP.frequency.value = 3000;
+      noiseLP.Q.value = 1.0;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.1, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+      noiseSrc.connect(noiseLP);
+      noiseLP.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + 0.015);
+    } catch {
+      // Audio context may not be available
+    }
+  }
+
+  /** System restore complete — ascending triumphant tone. */
+  restoreComplete() {
+    if (this._muted) return;
+    [330, 440, 550, 660, 880].forEach((freq, i) => {
+      setTimeout(() => this.playTone(freq, 0.15, "square", 0.15), i * 80);
+    });
+  }
+
+  /** TV channel change — brief static burst. */
+  channelChange() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // White noise burst
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = this.getNoiseBuffer(ctx);
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.25, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      noiseSrc.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + 0.2);
+
+      // Low thump
+      const thump = ctx.createOscillator();
+      thump.type = "sine";
+      thump.frequency.setValueAtTime(80, now);
+      thump.frequency.exponentialRampToValueAtTime(30, now + 0.1);
+      const thumpGain = ctx.createGain();
+      thumpGain.gain.setValueAtTime(0.2, now);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      thump.connect(thumpGain);
+      thumpGain.connect(ctx.destination);
+      thump.start(now);
+      thump.stop(now + 0.15);
+    } catch {
+      // Audio context may not be available
+    }
+  }
+
+  /** Konami code unlocked — triumphant retro jingle. */
+  konamiUnlock() {
+    if (this._muted) return;
+    const notes = [523, 523, 784, 784, 1047, 1047, 784];
+    notes.forEach((freq, i) => {
+      setTimeout(() => this.playTone(freq, 0.1, "square", 0.18), i * 80);
+    });
+  }
+
+  /** Chunky CRT monitor button click — mechanical ka-chunk. */
+  buttonClick() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // --- Layer 1: Click transient (the switch snapping) ---
+      const clickOsc = ctx.createOscillator();
+      clickOsc.type = "square";
+      clickOsc.frequency.setValueAtTime(1800, now);
+      clickOsc.frequency.exponentialRampToValueAtTime(400, now + 0.015);
+
+      const clickGain = ctx.createGain();
+      clickGain.gain.setValueAtTime(0.12, now);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+      clickOsc.connect(clickGain);
+      clickGain.connect(ctx.destination);
+      clickOsc.start(now);
+      clickOsc.stop(now + 0.035);
+
+      // --- Layer 2: Plastic body thud ---
+      const thudOsc = ctx.createOscillator();
+      thudOsc.type = "sine";
+      thudOsc.frequency.setValueAtTime(300, now);
+      thudOsc.frequency.exponentialRampToValueAtTime(80, now + 0.06);
+
+      const thudGain = ctx.createGain();
+      thudGain.gain.setValueAtTime(0.15, now);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+      thudOsc.connect(thudGain);
+      thudGain.connect(ctx.destination);
+      thudOsc.start(now);
+      thudOsc.stop(now + 0.08);
+
+      // --- Layer 3: Noise texture (plastic rattle) ---
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = this.getNoiseBuffer(ctx);
+
+      const noiseLP = ctx.createBiquadFilter();
+      noiseLP.type = "lowpass";
+      noiseLP.frequency.value = 2000;
+
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.08, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+      noiseSrc.connect(noiseLP);
+      noiseLP.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + 0.05);
+    } catch {
+      // Audio context may not be available
+    }
+  }
+
+  /** System meltdown — chaotic descending noise + distortion. */
+  meltdown() {
+    if (this._muted) return;
+    try {
+      const ctx = this.getContext();
+      const now = ctx.currentTime;
+
+      // Harsh noise burst with distortion
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = this.getNoiseBuffer(ctx);
+      noiseSrc.loop = true;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.3, now);
+      noiseGain.gain.linearRampToValueAtTime(0.05, now + 2.5);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 3.0);
+
+      const distortion = ctx.createWaveShaper();
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        const x = (i * 2) / 256 - 1;
+        curve[i] = Math.tanh(x * 5);
+      }
+      distortion.curve = curve;
+
+      noiseSrc.connect(distortion);
+      distortion.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noiseSrc.start(now);
+      noiseSrc.stop(now + 3.0);
+
+      // Descending alarm tone
+      const alarmOsc = ctx.createOscillator();
+      alarmOsc.type = "sawtooth";
+      alarmOsc.frequency.setValueAtTime(800, now);
+      alarmOsc.frequency.exponentialRampToValueAtTime(60, now + 2.5);
+      const alarmGain = ctx.createGain();
+      alarmGain.gain.setValueAtTime(0.1, now);
+      alarmGain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+      alarmOsc.connect(alarmGain);
+      alarmGain.connect(ctx.destination);
+      alarmOsc.start(now);
+      alarmOsc.stop(now + 2.5);
+    } catch {
+      // Audio context may not be available
+    }
+  }
 }
 
 export const soundManager = new SoundManager();

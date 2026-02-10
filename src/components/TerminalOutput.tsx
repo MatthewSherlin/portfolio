@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useTypewriter } from "@/hooks/useTypewriter";
 
 export interface OutputLine {
@@ -46,7 +46,7 @@ function TypewriterLine({
 
   return (
     <div className={getLineClass(line.type)}>
-      <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed m-0">
+      <pre className="whitespace-pre-wrap font-mono leading-relaxed m-0">
         {displayedText}
         <span className="block-cursor" />
       </pre>
@@ -59,8 +59,10 @@ export function TerminalOutput({
   onTypingComplete,
   onSkip,
 }: TerminalOutputProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+  const programmaticScrollRef = useRef(false);
 
   // Find the last animating line
   const lastAnimatingIndex = lines.reduce(
@@ -68,40 +70,80 @@ export function TerminalOutput({
     -1
   );
 
+  // Detect if user manually scrolled away from bottom
+  const handleScroll = useCallback(() => {
+    // Ignore scroll events we caused ourselves
+    if (programmaticScrollRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    userScrolledRef.current = !atBottom;
+  }, []);
+
+  // Scroll container to bottom without affecting ancestors
+  const scrollToBottom = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    programmaticScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    // Clear the flag after the scroll event fires
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, []);
+
+  // When new lines arrive, reset user-scroll override and snap to bottom
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines, lastAnimatingIndex]);
+    userScrolledRef.current = false;
+    scrollToBottom();
+  }, [lines, scrollToBottom]);
+
+  // ResizeObserver: follow content growth during typewriter animation
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const observer = new ResizeObserver(() => {
+      if (!userScrolledRef.current) {
+        scrollToBottom();
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
 
   return (
     <div
       ref={containerRef}
-      className="terminal-output flex-1 overflow-y-auto p-4 pb-0"
+      className="terminal-output flex-1 overflow-y-auto p-2 sm:p-4 pb-0"
+      onScroll={handleScroll}
       onClick={onSkip}
     >
-      {lines.map((line, index) => {
-        if (line.animate && index === lastAnimatingIndex) {
+      {/* Inner wrapper pins content to bottom when short, scrolls normally when tall */}
+      <div ref={contentRef} className="min-h-full flex flex-col justify-end">
+        {lines.map((line, index) => {
+          if (line.animate && index === lastAnimatingIndex) {
+            return (
+              <TypewriterLine
+                key={line.id}
+                line={line}
+                onComplete={onTypingComplete}
+              />
+            );
+          }
+
+          if (!line.content) {
+            return <div key={line.id} className="h-4" />;
+          }
+
           return (
-            <TypewriterLine
-              key={line.id}
-              line={line}
-              onComplete={onTypingComplete}
-            />
+            <div key={line.id} className={getLineClass(line.type)}>
+              <pre className="whitespace-pre-wrap font-mono leading-relaxed m-0">
+                {line.content}
+              </pre>
+            </div>
           );
-        }
-
-        if (!line.content) {
-          return <div key={line.id} className="h-4" />;
-        }
-
-        return (
-          <div key={line.id} className={getLineClass(line.type)}>
-            <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed m-0">
-              {line.content}
-            </pre>
-          </div>
-        );
-      })}
-      <div ref={scrollRef} />
+        })}
+      </div>
     </div>
   );
 }

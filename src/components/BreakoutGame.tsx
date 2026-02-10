@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface BreakoutGameProps {
   onExit: (score: number) => void;
@@ -256,9 +257,11 @@ export function BreakoutGame({ onExit }: BreakoutGameProps) {
 
   const livesStr = "\u2665".repeat(Math.max(0, g.lives));
 
+  const { isMobile } = useResponsive();
+
   return (
-    <div className="flex flex-col h-full p-4 terminal-text overflow-hidden">
-      <pre className="font-mono text-sm leading-tight m-0">
+    <div className={`flex flex-col h-full ${isMobile ? "p-1" : "p-4"} terminal-text overflow-hidden`}>
+      <pre className={`font-mono ${isMobile ? "text-crt-small" : "text-crt-base"} leading-tight m-0`}>
         {`  BREAKOUT  |  Score: ${String(g.score).padStart(5, "0")}  |  Level: ${g.level}/${TOTAL_LEVELS}  |  Lives: ${livesStr}\n`}
         {`  A/D or Arrows: move  |  Space: launch  |  Q: quit\n\n`}
         {lines.join("\n")}

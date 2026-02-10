@@ -1,4 +1,6 @@
 import { getResumeData } from "./resume-data";
+import { listUserFiles, readFile as readUserFile } from "./user-files";
+import { hasUnlock } from "./unlocks";
 
 interface FSNode {
   name: string;
@@ -118,7 +120,7 @@ function buildFilesystem(): FSNode {
     dir(".secret", [
       file(
         "README.md",
-        "You found a hidden directory!\n\nTry running 'sudo hire-matt' for a surprise."
+        "You found a hidden directory!\n\nThere are secrets hidden in this terminal.\nTry some classic codes and commands..."
       ),
     ]),
   ]);
@@ -134,6 +136,53 @@ export class VirtualFS {
 
   get cwd(): string {
     return this._cwd;
+  }
+
+  /** Overlay localStorage user files onto the virtual FS (shadow copies + user-created). */
+  private syncUserFiles(): void {
+    if (!hasUnlock("editor")) return;
+
+    const userFiles = listUserFiles();
+
+    for (const fullPath of userFiles) {
+      // fullPath is like "~/about.txt" or "~/projects/newfile.txt"
+      const content = readUserFile(fullPath) ?? "";
+      const segments = fullPath.slice(2).split("/"); // Remove "~/"
+      const fileName = segments.pop();
+      if (!fileName) continue;
+
+      // Navigate to the parent directory, creating intermediate dirs as needed
+      let current = this.root;
+      for (const dirName of segments) {
+        if (!current.children) {
+          current.children = new Map();
+        }
+        let child = current.children.get(dirName);
+        if (!child || child.type !== "directory") {
+          child = {
+            name: dirName,
+            type: "directory",
+            children: new Map(),
+            permissions: "drwxrwxr-x",
+            size: 4096,
+            modified: "Feb 10 2026",
+          };
+          current.children.set(dirName, child);
+        }
+        current = child;
+      }
+
+      // Insert or overwrite the file node
+      if (!current.children) current.children = new Map();
+      current.children.set(fileName, {
+        name: fileName,
+        type: "file",
+        content,
+        permissions: "-rw-rw-r--",
+        size: content.length,
+        modified: "Feb 10 2026",
+      });
+    }
   }
 
   private resolve(path: string): string {
@@ -166,6 +215,7 @@ export class VirtualFS {
   }
 
   private getNode(path: string): FSNode | null {
+    this.syncUserFiles();
     const resolved = this.resolve(path);
     if (resolved === "~") return this.root;
 
@@ -305,6 +355,7 @@ export class VirtualFS {
   getCompletions(
     partial: string
   ): { name: string; isDir: boolean }[] {
+    this.syncUserFiles();
     const lastSlash = partial.lastIndexOf("/");
     let dirPath: string;
     let prefix: string;

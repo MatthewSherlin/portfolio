@@ -3,6 +3,7 @@ import { VirtualFS } from "./filesystem";
 import {
   themes,
   secretThemes,
+  easterEggThemes,
   getTheme,
   getThemeNames,
   applyTheme,
@@ -12,18 +13,25 @@ import { generateNeofetch } from "./neofetch";
 import { handleEasterEgg } from "./easter-eggs";
 import { AchievementState, formatAchievements, isFullyUnlocked } from "./achievements";
 import { soundManager } from "./sound-manager";
+import { hasUnlock } from "./unlocks";
+import { createFile, deleteFile, writeFile as writeUserFile, isUserFile, renameFile } from "./user-files";
+import { grantUnlock } from "./unlocks";
 
 export interface CommandResult {
   output: string;
   type: "output" | "error" | "system";
   clearScreen?: boolean;
   switchMode?: "command" | "chat";
-  startGame?: "snake" | "invaders" | "breakout";
+  startGame?: "snake" | "invaders" | "breakout" | "duke";
   startGui?: boolean;
   togglePanel?: boolean;
   unlockAll?: boolean;
   resetTerminal?: boolean;
   confirmReset?: boolean;
+  startRestore?: boolean;
+  startMeltdown?: boolean;
+  startEditor?: string; // file path to edit
+  switchChannel?: number;
 }
 
 export interface CommandContext {
@@ -36,6 +44,8 @@ export interface CommandContext {
   soundEnabled: boolean;
   onSoundToggle: () => boolean;
   trackEasterEgg: (id: string) => void;
+  fontSize: string;
+  onFontSizeChange: (size: string) => void;
 }
 
 interface CommandDefinition {
@@ -44,6 +54,8 @@ interface CommandDefinition {
   category: "nav" | "info" | "system" | "fun";
   aliases?: string[];
   secret?: boolean;
+  /** Unlock ID required to show this command (checked at runtime). */
+  unlockGate?: string;
   handler: (args: string[], ctx: CommandContext) => CommandResult;
 }
 
@@ -109,7 +121,7 @@ function executeSingle(
   const egg = handleEasterEgg(name, args);
   if (egg) {
     ctx.trackEasterEgg(egg.eggId);
-    return { output: egg.output, type: "output" };
+    return { output: egg.output, type: "output", startMeltdown: egg.startMeltdown };
   }
 
   const cmd = commands.get(name);
@@ -148,6 +160,7 @@ export function getCommandSuggestions(
       if (seen.has(cmd.name)) return;
       seen.add(cmd.name);
       if (cmd.secret && !unlocked) return;
+      if (cmd.unlockGate && !hasUnlock(cmd.unlockGate as "glitch_theme" | "editor" | "channels")) return;
       if (cmd.name.startsWith(prefix)) {
         suggestions.push({ name: cmd.name, description: cmd.description });
       }
@@ -173,7 +186,7 @@ export function getCommandSuggestions(
 
   // Complete filesystem paths
   const cmd = parts[0].toLowerCase();
-  if (["cd", "ls", "cat", "tree"].includes(cmd)) {
+  if (["cd", "ls", "cat", "tree", "touch", "vim", "vi", "emacs", "nano", "edit", "rm", "mkdir", "cp", "mv"].includes(cmd)) {
     const partial = parts[parts.length - 1] || "";
     const completions = fs.getCompletions(partial);
     return completions.map((c) => ({
@@ -191,6 +204,14 @@ export function getCommandSuggestions(
         name: n,
         description: (themes[n] || secretThemes[n])?.label || n,
       }));
+  }
+
+  // Complete font size names
+  if (cmd === "fontsize") {
+    const prefix = (parts[1] || "").toLowerCase();
+    return ["small", "medium", "large"]
+      .filter((s) => s.startsWith(prefix))
+      .map((s) => ({ name: s, description: s === "small" ? "12px" : s === "medium" ? "14px" : "17px" }));
   }
 
   return [];
@@ -397,6 +418,7 @@ register({
       if (seen.has(cmd.name)) return;
       seen.add(cmd.name);
       if (cmd.secret && !allUnlocked) return;
+      if (cmd.unlockGate && !hasUnlock(cmd.unlockGate as "glitch_theme" | "editor" | "channels")) return;
       const section = cmd.secret
         ? "Secret (100%)"
         : catMap[cmd.category] || "System";
@@ -448,6 +470,13 @@ register({
         const current = name === ctx.currentTheme ? " (active)" : "";
         lines.push(`  ${name.padEnd(12)} ${t.label}${current}`);
       }
+      // Show easter-egg unlocked themes
+      for (const [name, t] of Object.entries(easterEggThemes)) {
+        if (hasUnlock("glitch_theme") && name === "glitch") {
+          const current = name === ctx.currentTheme ? " (active)" : "";
+          lines.push(`  ${name.padEnd(12)} ${t.label}${current}`);
+        }
+      }
       if (allUnlocked) {
         lines.push("");
         lines.push("  Secret themes (100% completion):");
@@ -474,6 +503,13 @@ register({
     if (secretThemes[themeName] && !allUnlocked) {
       return {
         output: `Theme '${themeName}' requires 100% completion to unlock.`,
+        type: "error",
+      };
+    }
+
+    if (easterEggThemes[themeName] && !hasUnlock("glitch_theme")) {
+      return {
+        output: `Theme '${themeName}' is locked. Find the easter egg to unlock it.`,
         type: "error",
       };
     }
@@ -561,6 +597,30 @@ register({
 });
 
 register({
+  name: "fontsize",
+  description: "Change terminal font size",
+  category: "system",
+  handler: (args, ctx) => {
+    const sizes = ["small", "medium", "large"];
+    if (!args[0]) {
+      return {
+        output: `  Current: ${ctx.fontSize}\n  Usage: fontsize <small|medium|large>`,
+        type: "output",
+      };
+    }
+    const size = args[0].toLowerCase();
+    if (!sizes.includes(size)) {
+      return {
+        output: `  Unknown size: ${args[0]}. Options: small, medium, large`,
+        type: "error",
+      };
+    }
+    ctx.onFontSizeChange(size);
+    return { output: `  Font size changed to ${size}`, type: "system" };
+  },
+});
+
+register({
   name: "reset",
   description: "Reset all progress",
   category: "system",
@@ -569,6 +629,305 @@ register({
     type: "system",
     confirmReset: true,
   }),
+});
+
+register({
+  name: "restore",
+  description: "Restore the system",
+  category: "system",
+  unlockGate: "glitch_theme",
+  handler: () => {
+    if (!hasUnlock("glitch_theme")) {
+      return {
+        output: 'Command not found: restore. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    return {
+      output: "",
+      type: "output",
+      startRestore: true,
+    };
+  },
+});
+
+register({
+  name: "rm",
+  description: "Remove a user-created file",
+  category: "nav",
+  unlockGate: "editor",
+  handler: (args, ctx) => {
+    if (!hasUnlock("editor")) {
+      return {
+        output: 'Command not found: rm. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (!args[0]) {
+      return { output: "rm: missing operand", type: "error" };
+    }
+    let path = args[0];
+    if (!path.startsWith("~/") && !path.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      path = cwd === "~" ? `~/${path}` : `${cwd}/${path}`;
+    }
+    if (!isUserFile(path)) {
+      return {
+        output: `  rm: cannot remove '${args[0]}': Permission denied`,
+        type: "error",
+      };
+    }
+    const err = deleteFile(path);
+    if (err) return { output: `  ${err}`, type: "error" };
+    return { output: "", type: "output" };
+  },
+});
+
+register({
+  name: "touch",
+  description: "Create a new file",
+  category: "nav",
+  unlockGate: "editor",
+  handler: (args, ctx) => {
+    if (!hasUnlock("editor")) {
+      return {
+        output: 'Command not found: touch. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (!args[0]) {
+      return { output: "touch: missing file operand", type: "error" };
+    }
+    let path = args[0];
+    if (!path.startsWith("~/") && !path.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      path = cwd === "~" ? `~/${path}` : `${cwd}/${path}`;
+    }
+    const err = createFile(path);
+    if (err) return { output: `  ${err}`, type: "error" };
+    return { output: "", type: "output" };
+  },
+});
+
+register({
+  name: "vim",
+  description: "Edit a file",
+  category: "nav",
+  aliases: ["vi", "emacs", "nano", "edit"],
+  handler: (args, ctx) => {
+    // First use: unlock editor commands
+    if (!hasUnlock("editor")) {
+      grantUnlock("editor");
+      ctx.trackEasterEgg("editor_vim");
+      if (!args[0]) {
+        return {
+          output: [
+            "  ░░░░ NEW UNLOCK ░░░░",
+            "",
+            "  Editor mode activated!",
+            "  New commands available:",
+            "    vim <path>    — Open file in the editor",
+            "    touch <path>  — Create a new file",
+            "    mkdir <path>  — Create a directory",
+            "    cp <src> <dst> — Copy a file",
+            "    mv <src> <dst> — Move/rename a file",
+            "    rm <path>     — Remove user-created files",
+            "",
+            "  Edit any file! System files are saved as shadow copies.",
+            "  Try: vim ~/about.txt",
+          ].join("\n"),
+          type: "output",
+        };
+      }
+    }
+    if (!args[0]) {
+      return { output: "  Usage: vim <file>", type: "output" };
+    }
+    let path = args[0];
+    if (!path.startsWith("~/") && !path.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      path = cwd === "~" ? `~/${path}` : `${cwd}/${path}`;
+    }
+    // Already a user file (shadow copy or user-created) — edit directly
+    if (isUserFile(path)) {
+      return { output: "", type: "output", startEditor: path };
+    }
+    // System file exists — create shadow copy then open editor
+    const content = ctx.fs.cat(path);
+    if (content.startsWith("cat:")) {
+      // File doesn't exist — create it then open
+      writeUserFile(path, "");
+      return { output: "", type: "output", startEditor: path };
+    }
+    writeUserFile(path, content);
+    return { output: "", type: "output", startEditor: path };
+  },
+});
+
+register({
+  name: "mkdir",
+  description: "Create a directory",
+  category: "nav",
+  unlockGate: "editor",
+  handler: (args, ctx) => {
+    if (!hasUnlock("editor")) {
+      return {
+        output: 'Command not found: mkdir. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (!args[0]) {
+      return { output: "mkdir: missing operand", type: "error" };
+    }
+    let path = args[0];
+    if (!path.startsWith("~/") && !path.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      path = cwd === "~" ? `~/${path}` : `${cwd}/${path}`;
+    }
+    // Create a .keep file inside the directory so it shows up
+    const keepPath = path.endsWith("/") ? `${path}.keep` : `${path}/.keep`;
+    const err = createFile(keepPath);
+    if (err) return { output: `  ${err}`, type: "error" };
+    return { output: "", type: "output" };
+  },
+});
+
+register({
+  name: "cp",
+  description: "Copy a file",
+  category: "nav",
+  unlockGate: "editor",
+  handler: (args, ctx) => {
+    if (!hasUnlock("editor")) {
+      return {
+        output: 'Command not found: cp. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (args.length < 2) {
+      return { output: "cp: missing destination operand", type: "error" };
+    }
+    let src = args[0];
+    let dst = args[1];
+    if (!src.startsWith("~/") && !src.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      src = cwd === "~" ? `~/${src}` : `${cwd}/${src}`;
+    }
+    if (!dst.startsWith("~/") && !dst.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      dst = cwd === "~" ? `~/${dst}` : `${cwd}/${dst}`;
+    }
+    const content = ctx.fs.cat(src);
+    if (content.startsWith("cat:")) {
+      return { output: `  cp: ${args[0]}: No such file`, type: "error" };
+    }
+    const err = writeUserFile(dst, content);
+    if (err) return { output: `  ${err}`, type: "error" };
+    return { output: "", type: "output" };
+  },
+});
+
+register({
+  name: "mv",
+  description: "Move/rename a file",
+  category: "nav",
+  unlockGate: "editor",
+  handler: (args, ctx) => {
+    if (!hasUnlock("editor")) {
+      return {
+        output: 'Command not found: mv. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (args.length < 2) {
+      return { output: "mv: missing destination operand", type: "error" };
+    }
+    let src = args[0];
+    let dst = args[1];
+    if (!src.startsWith("~/") && !src.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      src = cwd === "~" ? `~/${src}` : `${cwd}/${src}`;
+    }
+    if (!dst.startsWith("~/") && !dst.startsWith("~")) {
+      const cwd = ctx.fs.pwd();
+      dst = cwd === "~" ? `~/${dst}` : `${cwd}/${dst}`;
+    }
+    if (!isUserFile(src)) {
+      return {
+        output: `  mv: cannot move '${args[0]}': Permission denied`,
+        type: "error",
+      };
+    }
+    const err = renameFile(src, dst);
+    if (err) return { output: `  ${err}`, type: "error" };
+    return { output: "", type: "output" };
+  },
+});
+
+register({
+  name: "screensaver",
+  description: "Activate screensaver",
+  category: "fun",
+  unlockGate: "channels",
+  handler: () => {
+    if (!hasUnlock("channels")) {
+      return {
+        output: 'Command not found: screensaver. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    return {
+      output: "  Switching to DVD Logo...",
+      type: "system",
+      switchChannel: 2,
+    };
+  },
+});
+
+register({
+  name: "channel",
+  description: "Switch CRT channel",
+  category: "system",
+  unlockGate: "channels",
+  handler: (args) => {
+    if (!hasUnlock("channels")) {
+      return {
+        output: 'Command not found: channel. Type "help" for available commands.',
+        type: "error",
+      };
+    }
+    if (!args[0]) {
+      return {
+        output: [
+          "  CRT Channels:",
+          "    1  terminal     Terminal",
+          "    2  dvd          DVD Logo",
+          "    3  banjo        Banjo-Kazooie",
+          "    4  bars         Color Bars",
+          "    5  static       Static",
+          "",
+          "  Usage: channel <number|name>",
+        ].join("\n"),
+        type: "output",
+      };
+    }
+    const arg = args[0].toLowerCase();
+    const nameMap: Record<string, number> = {
+      terminal: 1, dvd: 2, banjo: 3, bars: 4, static: 5,
+    };
+    const channel = nameMap[arg] ?? parseInt(arg, 10);
+    if (!channel || channel < 1 || channel > 5) {
+      return {
+        output: `  Unknown channel: ${args[0]}. Use 1-5 or terminal/dvd/banjo/bars/static.`,
+        type: "error",
+      };
+    }
+    return {
+      output: `  Switching to channel ${channel}...`,
+      type: "system",
+      switchChannel: channel,
+    };
+  },
 });
 
 // --- Fun ---
@@ -606,6 +965,21 @@ register({
   }),
 });
 
+
+register({
+  name: "bubblegum",
+  description: "It's time to kick ass...",
+  category: "fun",
+  secret: true,
+  handler: (_args, ctx) => {
+    ctx.trackEasterEgg("bubblegum");
+    return {
+      output: "",
+      type: "output",
+      startGame: "duke",
+    };
+  },
+});
 
 register({
   name: "gui",

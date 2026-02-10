@@ -14,6 +14,7 @@ interface InfoPanelProps {
   themeName: string;
   soundEnabled: boolean;
   sessionStart: number;
+  compact?: boolean;
 }
 
 export function InfoPanel({
@@ -22,6 +23,7 @@ export function InfoPanel({
   themeName,
   soundEnabled,
   sessionStart,
+  compact,
 }: InfoPanelProps) {
   // Force re-render every second for uptime + clock
   const [now, setNow] = useState(() => Date.now());
@@ -39,6 +41,24 @@ export function InfoPanel({
         ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
         : `${elapsed}s`;
 
+  // Compact mode: horizontal status bar for mobile portrait
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-[var(--color-crt-dim)] terminal-text-dim text-crt-tiny font-mono shrink-0 overflow-hidden">
+        <span className="truncate">{themeName}</span>
+        <span className="opacity-30">|</span>
+        <span>{soundEnabled ? "SND" : "MUTE"}</span>
+        <span className="opacity-30">|</span>
+        <span>{uptime}</span>
+        <span className="opacity-30">|</span>
+        <span>{unlocked.length}/{achievements.length}</span>
+        <span className="ml-auto shrink-0">
+          {new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+    );
+  }
+
   const currentPath = fs.pwd();
   const dirListing = fs
     .ls(undefined, [])
@@ -46,16 +66,16 @@ export function InfoPanel({
     .filter(Boolean);
 
   return (
-    <div className="w-48 border-l border-[var(--color-crt-dim)] p-3 overflow-y-auto terminal-text-dim text-xs font-mono flex flex-col gap-3 shrink-0">
+    <div className="w-48 border-l border-[var(--color-crt-dim)] p-3 overflow-y-auto terminal-text-dim text-crt-small font-mono flex flex-col gap-3 shrink-0">
       <section>
-        <div className="terminal-text text-xs mb-1">{"[ System ]"}</div>
+        <div className="terminal-text text-crt-small mb-1">{"[ System ]"}</div>
         <div>Theme: {themeName}</div>
         <div>Sound: {soundEnabled ? "On" : "Off"}</div>
         <div>Uptime: {uptime}</div>
       </section>
 
       <section>
-        <div className="terminal-text text-xs mb-1 truncate">
+        <div className="terminal-text text-crt-small mb-1 truncate">
           {"[ "}{currentPath}{" ]"}
         </div>
         {dirListing.slice(0, 10).map((item, i) => (
@@ -69,7 +89,7 @@ export function InfoPanel({
       </section>
 
       <section>
-        <div className="terminal-text text-xs mb-1">{"[ Progress ]"}</div>
+        <div className="terminal-text text-crt-small mb-1">{"[ Progress ]"}</div>
         <div className="mb-1">
           {unlocked.length}/{achievements.length}
         </div>
@@ -86,7 +106,7 @@ export function InfoPanel({
       </section>
 
       <section className="mt-auto text-right">
-        <div className="terminal-text text-xs">
+        <div className="terminal-text text-crt-small">
           {new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </div>
       </section>

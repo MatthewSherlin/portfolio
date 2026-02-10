@@ -72,6 +72,27 @@ export const achievements: Achievement[] = [
     check: (s) => s.commandsUsed.size >= 15,
   },
   {
+    id: "glitch_lord",
+    name: "Glitch Lord",
+    description: "Unlock the glitch theme",
+    check: (s) => s.easterEggsFound.has("rm_rf"),
+  },
+  {
+    id: "hacker",
+    name: "Hacker",
+    description: "Unlock the editor",
+    check: (s) =>
+      s.easterEggsFound.has("editor_vim") ||
+      s.easterEggsFound.has("editor_emacs") ||
+      s.easterEggsFound.has("editor_nano"),
+  },
+  {
+    id: "secret_code",
+    name: "Secret Code",
+    description: "Enter the Konami code",
+    check: (s) => s.easterEggsFound.has("konami"),
+  },
+  {
     id: "completionist",
     name: "Completionist",
     description: "Unlock all other achievements",

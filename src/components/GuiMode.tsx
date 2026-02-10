@@ -7,12 +7,13 @@ import {
   AchievementState,
   achievements,
   getUnlockedAchievements,
-  isFullyUnlocked,
 } from "@/lib/achievements";
+import { VirtualFS } from "@/lib/filesystem";
+import { soundManager } from "@/lib/sound-manager";
 
 type Section =
   | "about" | "experience" | "projects" | "skills" | "education" | "contact"
-  | "themes" | "achievements" | "settings"
+  | "themes" | "achievements" | "settings" | "games" | "files"
   | null;
 
 interface GuiModeProps {
@@ -23,6 +24,12 @@ interface GuiModeProps {
   soundEnabled: boolean;
   onSoundToggle: () => void;
   sessionStart: number;
+  onStartGame: (game: string) => void;
+  fs: VirtualFS;
+  allUnlocked: boolean;
+  isMobile: boolean;
+  fontSize: string;
+  onFontSizeChange: (size: string) => void;
 }
 
 const contentSections: { key: Section; label: string; icon: string }[] = [
@@ -32,6 +39,11 @@ const contentSections: { key: Section; label: string; icon: string }[] = [
   { key: "skills", label: "Skills", icon: ">" },
   { key: "education", label: "Education", icon: ">" },
   { key: "contact", label: "Contact", icon: ">" },
+];
+
+const funSections: { key: Section; label: string; icon: string }[] = [
+  { key: "games", label: "Games", icon: "!" },
+  { key: "files", label: "Files", icon: "/" },
 ];
 
 const systemSections: { key: Section; label: string; icon: string }[] = [
@@ -51,8 +63,8 @@ function ThemeButton({
 }) {
   return (
     <button
-      onClick={onClick}
-      className={`w-full text-left text-xs px-2 py-1.5 mb-0.5 flex items-center gap-2 cursor-pointer transition-colors ${
+      onClick={() => { soundManager.guiClick(); onClick(); }}
+      className={`w-full text-left text-crt-small px-2 py-1.5 mb-0.5 flex items-center gap-2 cursor-pointer transition-colors ${
         isActive
           ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)]"
           : "hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)]"
@@ -81,8 +93,16 @@ export function GuiMode({
   soundEnabled,
   onSoundToggle,
   sessionStart,
+  onStartGame,
+  fs,
+  allUnlocked: allUnlockedProp,
+  isMobile,
+  fontSize,
+  onFontSizeChange,
 }: GuiModeProps) {
   const [activeSection, setActiveSection] = useState<Section>(null);
+  const [fileBrowserPath, setFileBrowserPath] = useState("~");
+  const [fileViewContent, setFileViewContent] = useState<{ name: string; content: string } | null>(null);
   const data = getResumeData();
 
   // Live clock for status bar + settings uptime
@@ -103,7 +123,7 @@ export function GuiMode({
 
   // Computed values for status bar + sections
   const unlocked = getUnlockedAchievements(achievementState);
-  const allUnlocked = isFullyUnlocked(achievementState);
+  const allUnlocked = allUnlockedProp;
   const elapsed = Math.floor((now - sessionStart) / 1000);
   const uptime =
     elapsed >= 3600
@@ -111,6 +131,8 @@ export function GuiMode({
       : elapsed >= 60
         ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
         : `${elapsed}s`;
+
+  const click = () => soundManager.guiClick();
 
   const handleThemeClick = (theme: { name: string }) => {
     const t = themes[theme.name] || secretThemes[theme.name];
@@ -130,8 +152,8 @@ export function GuiMode({
     items.map((s) => (
       <button
         key={s.key}
-        onClick={() => setActiveSection(activeSection === s.key ? null : s.key)}
-        className={`w-full text-left text-xs px-2 py-1.5 mb-0.5 cursor-pointer transition-colors ${
+        onClick={() => { click(); setActiveSection(activeSection === s.key ? null : s.key); }}
+        className={`w-full text-left text-crt-small px-2 py-1.5 mb-0.5 cursor-pointer transition-colors ${
           activeSection === s.key
             ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)]"
             : "hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)]"
@@ -144,44 +166,66 @@ export function GuiMode({
   return (
     <div className="flex flex-col h-full font-mono text-[var(--color-crt-text)] overflow-hidden">
       {/* Header */}
-      <div className="border-b border-[var(--color-crt-dim)] p-3 shrink-0">
+      <div className={`border-b border-[var(--color-crt-dim)] ${isMobile ? "px-2 py-1.5" : "p-3"} shrink-0`}>
         <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-bold">{data.name}</div>
-            <div className="text-xs" style={{ color: "var(--color-crt-dim)" }}>{data.title}</div>
+          <div className="min-w-0">
+            <div className={`${isMobile ? "text-crt-small" : "text-crt-base"} font-bold truncate`}>{data.name}</div>
+            {!isMobile && <div className="text-crt-small" style={{ color: "var(--color-crt-dim)" }}>{data.title}</div>}
           </div>
           <button
-            onClick={onExit}
-            className="text-xs px-2 py-1 border border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)] hover:bg-[var(--color-crt-text)] hover:text-[var(--color-crt-bg)] transition-colors cursor-pointer"
+            onClick={() => { click(); onExit(); }}
+            className={`${isMobile ? "text-crt-small px-2 py-1" : "text-crt-base px-3 py-1.5"} border border-[var(--color-crt-text)] hover:bg-[var(--color-crt-text)] hover:text-[var(--color-crt-bg)] cursor-pointer terminal-glow-btn shrink-0 ml-2`}
           >
-            [terminal]
+            {isMobile ? "[term]" : "[terminal]"}
           </button>
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Sidebar */}
-        <nav className="w-36 border-r border-[var(--color-crt-dim)] p-2 shrink-0 overflow-y-auto">
-          {renderSidebarGroup(contentSections)}
-          <div className="border-t border-[var(--color-crt-dim)] my-1.5" />
-          {renderSidebarGroup(systemSections)}
-        </nav>
+      <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
+        {/* Sidebar — horizontal scroll on mobile, vertical on desktop */}
+        {isMobile ? (
+          <div className="border-b border-[var(--color-crt-dim)] overflow-x-auto shrink-0">
+            <nav className="flex gap-0.5 p-1 min-w-max">
+              {[...contentSections, ...funSections, ...systemSections].map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => { click(); setActiveSection(activeSection === s.key ? null : s.key); }}
+                  className={`text-crt-small px-2 py-1 whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
+                    activeSection === s.key
+                      ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)]"
+                      : "hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)]"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        ) : (
+          <nav className="w-36 border-r border-[var(--color-crt-dim)] p-2 shrink-0 overflow-y-auto">
+            {renderSidebarGroup(contentSections)}
+            <div className="border-t border-[var(--color-crt-dim)] my-1.5" />
+            {renderSidebarGroup(funSections)}
+            <div className="border-t border-[var(--color-crt-dim)] my-1.5" />
+            {renderSidebarGroup(systemSections)}
+          </nav>
+        )}
 
         {/* Content */}
-        <div className="flex-1 p-3 overflow-y-auto text-xs leading-relaxed">
+        <div className={`flex-1 ${isMobile ? "p-2" : "p-3"} overflow-y-auto text-crt-small leading-relaxed`}>
           {!activeSection && (
             <div className="flex flex-col items-center justify-center h-full" style={{ color: "var(--color-crt-dim)" }}>
-              <div className="text-sm mb-2">{data.name}</div>
+              <div className="text-crt-base mb-2">{data.name}</div>
               <div className="mb-4">{data.title}</div>
               <div className="text-center max-w-xs">{data.summary}</div>
-              <div className="mt-4 text-xs">Select a section, or try Themes, Achievements, and Settings</div>
+              <div className="mt-4 text-crt-small">Select a section, or try Themes, Achievements, and Settings</div>
             </div>
           )}
 
           {activeSection === "about" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">About</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">About</h2>
               <p className="mb-2">{data.summary}</p>
               <div className="mt-2" style={{ color: "var(--color-crt-dim)" }}>
                 <div>Location: {data.location}</div>
@@ -192,7 +236,7 @@ export function GuiMode({
 
           {activeSection === "experience" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Experience</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Experience</h2>
               {data.experience.map((exp, i) => (
                 <div key={i} className="mb-3">
                   <div className="font-bold">{exp.role}</div>
@@ -209,7 +253,7 @@ export function GuiMode({
 
           {activeSection === "projects" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Projects</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Projects</h2>
               {data.projects.map((proj, i) => (
                 <div key={i} className="mb-3 p-2 border border-[var(--color-crt-dim)]">
                   <div className="font-bold">{proj.name}</div>
@@ -236,7 +280,7 @@ export function GuiMode({
 
           {activeSection === "skills" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Skills</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Skills</h2>
               {data.skills.map((cat, i) => (
                 <div key={i} className="mb-2">
                   <div className="font-bold" style={{ color: "var(--color-crt-dim)" }}>{cat.category}</div>
@@ -244,7 +288,7 @@ export function GuiMode({
                     {cat.items.map((item, j) => (
                       <span
                         key={j}
-                        className="px-1.5 py-0.5 border border-[var(--color-crt-dim)] text-[10px]"
+                        className="px-1.5 py-0.5 border border-[var(--color-crt-dim)] text-crt-tiny"
                       >
                         {item}
                       </span>
@@ -257,7 +301,7 @@ export function GuiMode({
 
           {activeSection === "education" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Education</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Education</h2>
               {data.education.map((edu, i) => (
                 <div key={i} className="mb-2">
                   <div className="font-bold">{edu.degree}</div>
@@ -269,7 +313,7 @@ export function GuiMode({
 
           {activeSection === "contact" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Contact</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Contact</h2>
               <div className="space-y-1">
                 <div>Email: {data.contact.email}</div>
                 {data.contact.github && (
@@ -300,10 +344,134 @@ export function GuiMode({
             </div>
           )}
 
+          {/* Games */}
+          {activeSection === "games" && (
+            <div>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Games</h2>
+              {[
+                { id: "snake", name: "Snake", desc: "Classic snake game. Eat, grow, survive." },
+                { id: "invaders", name: "Invaders", desc: "Defend Earth from pixel invaders." },
+                { id: "breakout", name: "Breakout", desc: "Break all the blocks with your paddle." },
+              ].map((game) => (
+                <div key={game.id} className="mb-3 p-2 border border-[var(--color-crt-dim)]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold">{game.name}</div>
+                      <div style={{ color: "var(--color-crt-dim)" }}>{game.desc}</div>
+                    </div>
+                    <button
+                      onClick={() => { click(); onStartGame(game.id); }}
+                      className="text-crt-small px-2 py-1 border border-[var(--color-crt-text)] hover:bg-[var(--color-crt-text)] hover:text-[var(--color-crt-bg)] cursor-pointer shrink-0 ml-2"
+                    >
+                      [PLAY]
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {allUnlocked && (
+                <div className="mt-2 p-2 border border-[var(--color-crt-text)]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold">??? Secret Game ???</div>
+                      <div style={{ color: "var(--color-crt-dim)" }}>It&apos;s time to kick ass and chew bubblegum...</div>
+                    </div>
+                    <button
+                      onClick={() => { click(); onStartGame("duke"); }}
+                      className="text-crt-small px-2 py-1 border border-[var(--color-crt-text)] hover:bg-[var(--color-crt-text)] hover:text-[var(--color-crt-bg)] cursor-pointer shrink-0 ml-2"
+                    >
+                      [PLAY]
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Files */}
+          {activeSection === "files" && (() => {
+            const listing = fs.ls(fileBrowserPath, ["-a"]);
+            const names = listing.split(/\s{2,}/);
+
+            return (
+              <div>
+                <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Files</h2>
+                <div className="mb-2 flex items-center gap-2">
+                  <span style={{ color: "var(--color-crt-dim)" }}>{fileBrowserPath}/</span>
+                  {fileBrowserPath !== "~" && (
+                    <button
+                      onClick={() => {
+                        click();
+                        const parts = fileBrowserPath.split("/");
+                        parts.pop();
+                        setFileBrowserPath(parts.join("/") || "~");
+                        setFileViewContent(null);
+                      }}
+                      className="text-crt-small px-1.5 py-0.5 border border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)] cursor-pointer"
+                    >
+                      [..]
+                    </button>
+                  )}
+                </div>
+                <div className="font-mono text-crt-small space-y-0.5">
+                  {names.map((entry, i) => {
+                    const clean = entry.replace(/\/$/, "");
+                    if (clean === "." || clean === ".." || !clean) return null;
+                    const isDir = entry.endsWith("/");
+
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          click();
+                          if (isDir) {
+                            const newPath = fileBrowserPath === "~"
+                              ? `~/${clean}`
+                              : `${fileBrowserPath}/${clean}`;
+                            setFileBrowserPath(newPath);
+                            setFileViewContent(null);
+                          } else {
+                            const fullPath = fileBrowserPath === "~"
+                              ? `~/${clean}`
+                              : `${fileBrowserPath}/${clean}`;
+                            setFileViewContent({
+                              name: clean,
+                              content: fs.cat(fullPath),
+                            });
+                          }
+                        }}
+                        className="block w-full text-left px-1 py-0.5 hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)] cursor-pointer"
+                      >
+                        <span style={{ color: isDir ? "var(--color-crt-text)" : "var(--color-crt-dim)" }}>
+                          {isDir ? "[dir] " : "      "}{clean}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {fileViewContent && (
+                  <div className="mt-3 border border-[var(--color-crt-dim)] p-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold">{fileViewContent.name}</span>
+                      <button
+                        onClick={() => { click(); setFileViewContent(null); }}
+                        className="text-crt-small px-1 border border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)] cursor-pointer"
+                      >
+                        [x]
+                      </button>
+                    </div>
+                    <pre className="whitespace-pre-wrap text-crt-tiny leading-relaxed" style={{ color: "var(--color-crt-dim)" }}>
+                      {fileViewContent.content}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Themes */}
           {activeSection === "themes" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Themes</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Themes</h2>
               {Object.values(themes).map((theme) => (
                 <ThemeButton
                   key={theme.name}
@@ -341,7 +509,7 @@ export function GuiMode({
 
             return (
               <div>
-                <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Achievements</h2>
+                <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Achievements</h2>
                 <div className="mb-3">
                   <span>Progress: {count}/{total} </span>
                   <span style={{ color: "var(--color-crt-dim)" }}>[{progressBar}]</span>
@@ -367,20 +535,39 @@ export function GuiMode({
           {/* Settings */}
           {activeSection === "settings" && (
             <div>
-              <h2 className="text-sm font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Settings</h2>
+              <h2 className="text-crt-base font-bold mb-2 border-b border-[var(--color-crt-dim)] pb-1">Settings</h2>
 
               <div className="mb-4">
                 <div className="font-bold mb-1">Sound Effects</div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={onSoundToggle}
-                    className="text-xs px-2 py-1 border border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)] cursor-pointer transition-colors"
+                    onClick={() => { click(); onSoundToggle(); }}
+                    className="text-crt-small px-2 py-1 border border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)] cursor-pointer transition-colors"
                   >
                     {soundEnabled ? "[ON ]" : "[OFF]"}
                   </button>
                   <span style={{ color: "var(--color-crt-dim)" }}>
                     {soundEnabled ? "CRT hum + key sounds" : "Silent mode"}
                   </span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="font-bold mb-1">Text Size</div>
+                <div className="flex items-center gap-1">
+                  {(["small", "medium", "large"] as const).map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => { click(); onFontSizeChange(size); }}
+                      className={`text-crt-small px-2 py-1 border cursor-pointer transition-colors ${
+                        fontSize === size
+                          ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)] border-[var(--color-crt-text)]"
+                          : "border-[var(--color-crt-dim)] hover:border-[var(--color-crt-text)]"
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -404,18 +591,18 @@ export function GuiMode({
       </div>
 
       {/* Status Bar */}
-      <div className="border-t border-[var(--color-crt-dim)] px-3 py-1 shrink-0 flex justify-between text-[10px]" style={{ color: "var(--color-crt-dim)" }}>
-        <div className="flex gap-3">
-          <span>Theme: {currentTheme}</span>
-          <span>Sound: {soundEnabled ? "ON" : "OFF"}</span>
-          <span>Uptime: {uptime}</span>
-          <span>{unlocked.length}/{achievements.length} achievements</span>
+      <div className="border-t border-[var(--color-crt-dim)] px-2 sm:px-3 py-1 shrink-0 flex justify-between text-crt-tiny" style={{ color: "var(--color-crt-dim)" }}>
+        <div className="flex gap-2 sm:gap-3 overflow-hidden">
+          {!isMobile && <span>Theme: {currentTheme}</span>}
+          <span>{soundEnabled ? "SND" : "MUTE"}</span>
+          <span>{uptime}</span>
+          <span>{unlocked.length}/{achievements.length}</span>
         </div>
-        <div>
+        <div className="shrink-0">
           {new Date(now).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
-            second: "2-digit",
+            ...(isMobile ? {} : { second: "2-digit" }),
           })}
         </div>
       </div>

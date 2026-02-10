@@ -6,8 +6,10 @@ import { TerminalInput } from "./TerminalInput";
 import { SnakeGame } from "./SnakeGame";
 import { InvadersGame } from "./InvadersGame";
 import { BreakoutGame } from "./BreakoutGame";
+import { DukeGame } from "./DukeGame";
 import { GuiMode } from "./GuiMode";
 import { InfoPanel } from "./InfoPanel";
+import { Editor } from "./Editor";
 import {
   executeCommand,
   getCommandSuggestions,
@@ -16,7 +18,7 @@ import {
 } from "@/lib/commands";
 import { bootSequence } from "@/lib/boot-sequence";
 import { VirtualFS } from "@/lib/filesystem";
-import { loadSavedTheme, applyTheme } from "@/lib/themes";
+import { loadSavedTheme, applyTheme, getTheme } from "@/lib/themes";
 import { soundManager } from "@/lib/sound-manager";
 import {
   AchievementState,
@@ -24,6 +26,7 @@ import {
   saveAchievementState,
   checkNewAchievements,
   getUnlockedAchievements,
+  isFullyUnlocked,
 } from "@/lib/achievements";
 import { KonamiTracker } from "@/lib/easter-eggs";
 import {
@@ -31,13 +34,39 @@ import {
   markCelebrationShown,
   getCelebrationSequence,
 } from "@/lib/celebration";
+import { getRecoverySequence } from "@/lib/recovery-sequence";
+import { hasUnlock, grantUnlock } from "@/lib/unlocks";
+import { useResponsive } from "@/hooks/useResponsive";
 
 let idCounter = Date.now();
 function uid() {
   return `line-${++idCounter}`;
 }
 
+type FontSize = "small" | "medium" | "large";
+
+function loadFontSize(): FontSize {
+  if (typeof window === "undefined") return "medium";
+  const saved = localStorage.getItem("portfolio_fontsize");
+  if (saved === "small" || saved === "medium" || saved === "large") return saved;
+  return "medium";
+}
+
+function applyFontSize(size: FontSize) {
+  const root = document.documentElement;
+  const sizes: Record<FontSize, [string, string, string]> = {
+    small:  ["11px", "10px", "8px"],
+    medium: ["14px", "12px", "10px"],
+    large:  ["17px", "15px", "12px"],
+  };
+  const [base, small, tiny] = sizes[size];
+  root.style.setProperty("--font-base", base);
+  root.style.setProperty("--font-small", small);
+  root.style.setProperty("--font-tiny", tiny);
+}
+
 export function Terminal() {
+  const responsive = useResponsive();
   const [history, setHistory] = useState<OutputLine[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -47,14 +76,31 @@ export function Terminal() {
   const [historyIndex, setHistoryIndex] = useState(0);
 
   // New feature state
-  const [gameMode, setGameMode] = useState<"snake" | "invaders" | "breakout" | null>(null);
-  const [guiMode, setGuiMode] = useState(false);
-  const [showPanel, setShowPanel] = useState(true);
+  const [gameMode, setGameMode] = useState<"snake" | "invaders" | "breakout" | "duke" | null>(null);
+  const [guiMode, setGuiMode] = useState(true);
+  const [showPanel, setShowPanel] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.innerWidth > 1024;
+  });
+  const [miniBoot, setMiniBoot] = useState(() => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("hasBooted")) return false;
+    return true;
+  });
   const [currentTheme, setCurrentTheme] = useState("amber");
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("portfolio_sound") === "on";
+  });
+  const [fontSize, setFontSize] = useState<FontSize>(loadFontSize);
   const [achievementState, setAchievementState] = useState<AchievementState>(
     () => loadAchievementState()
   );
+
+  // Editor state (file path being edited, null = not editing)
+  const [editorFile, setEditorFile] = useState<string | null>(null);
+
+  // Meltdown state (rm -rf / visual effect)
+  const [meltdownActive, setMeltdownActive] = useState(false);
 
   // Confirmation state
   const [pendingConfirm, setPendingConfirm] = useState<"reset" | null>(null);
@@ -72,13 +118,31 @@ export function Terminal() {
   const achievementStateRef = useRef(achievementState);
   achievementStateRef.current = achievementState;
   const prevUnlockedRef = useRef<Set<string>>(new Set());
+  const gameLaunchedFromGuiRef = useRef(false);
 
-  // Load saved theme on mount
+  // Load saved theme, font size, and sound state on mount
   useEffect(() => {
     const saved = loadSavedTheme();
     setCurrentTheme(saved.name);
     applyTheme(saved);
+    applyFontSize(loadFontSize());
+    // Sync sound manager with persisted state
+    if (localStorage.getItem("portfolio_sound") === "on") {
+      soundManager.unmute();
+    }
   }, []);
+
+  // Mini boot animation for GUI-first mode (2.5s visual, no text)
+  useEffect(() => {
+    if (!miniBoot) return;
+    const timer = setTimeout(() => {
+      setMiniBoot(false);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("hasBooted", "true");
+      }
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [miniBoot]);
 
   // Disco mode: cycle CSS text/glow colors when toggled
   useEffect(() => {
@@ -365,24 +429,63 @@ export function Terminal() {
 
   const triggerKonami = useCallback(() => {
     trackEasterEgg("konami");
-    setHistory((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        content: [
-          "",
-          "  +-------------------------------+",
-          "  |    KONAMI CODE ACTIVATED!      |",
-          "  |                               |",
-          "  |  +30 lives... just kidding.   |",
-          "  |  But you found a secret!      |",
-          "  +-------------------------------+",
-          "",
-        ].join("\n"),
-        type: "system",
-        animate: false,
-      },
-    ]);
+    const alreadyUnlocked = hasUnlock("channels");
+    grantUnlock("channels");
+    soundManager.konamiUnlock();
+
+    if (alreadyUnlocked) {
+      setHistory((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          content: [
+            "",
+            "  ↑↑↓↓←→←→BA",
+            "",
+            "  Channel system already unlocked!",
+            "  Use the monitor buttons to change channels.",
+            "",
+          ].join("\n"),
+          type: "system",
+          animate: false,
+        },
+      ]);
+    } else {
+      // Dispatch event so CRTMonitorScene can enable channel mode
+      window.dispatchEvent(new CustomEvent("konami-unlocked"));
+
+      setHistory((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          content: [
+            "",
+            "  ╔═══════════════════════════════╗",
+            "  ║    KONAMI CODE ACTIVATED!      ║",
+            "  ╠═══════════════════════════════╣",
+            "  ║                               ║",
+            "  ║  ░░░░ NEW UNLOCK ░░░░         ║",
+            "  ║                               ║",
+            "  ║  CRT Channel System enabled!  ║",
+            "  ║                               ║",
+            "  ║  Monitor buttons now switch   ║",
+            "  ║  between channels:            ║",
+            "  ║                               ║",
+            "  ║  CH 1: Terminal               ║",
+            "  ║  CH 2: DVD Logo               ║",
+            "  ║  CH 3: Banjo-Kazooie          ║",
+            "  ║  CH 4: Color Bars             ║",
+            "  ║  CH 5: Static                 ║",
+            "  ║                               ║",
+            "  ║  Try: screensaver             ║",
+            "  ╚═══════════════════════════════╝",
+            "",
+          ].join("\n"),
+          type: "system",
+          animate: false,
+        },
+      ]);
+    }
   }, [trackEasterEgg]);
 
   const handleTypingComplete = useCallback(() => {
@@ -427,8 +530,7 @@ export function Terminal() {
           { id: uid(), content: `> ${trimmed}`, type: "input", animate: false },
         ]);
         if (trimmed.toLowerCase() === "y") {
-          localStorage.removeItem("portfolio_achievements");
-          localStorage.removeItem("portfolio_celebration_shown");
+          localStorage.clear();
           const freshState: AchievementState = {
             commandsUsed: new Set(),
             easterEggsFound: new Set(),
@@ -442,9 +544,20 @@ export function Terminal() {
           setAchievementState(freshState);
           saveAchievementState(freshState);
           prevUnlockedRef.current = new Set();
+          // Reset font size and sound to defaults
+          setFontSize("medium");
+          applyFontSize("medium");
+          setSoundEnabled(false);
+          soundManager.mute();
+          // Restore default theme
+          const defaultTheme = getTheme("amber");
+          if (defaultTheme) {
+            applyTheme(defaultTheme);
+            setCurrentTheme("amber");
+          }
           setHistory((prev) => [
             ...prev,
-            { id: uid(), content: "  All progress has been reset. Achievements cleared.", type: "system", animate: false },
+            { id: uid(), content: "  All progress has been reset.", type: "system", animate: false },
           ]);
         } else {
           setHistory((prev) => [
@@ -486,9 +599,17 @@ export function Terminal() {
         onSoundToggle: () => {
           const enabled = !soundManager.muted;
           setSoundEnabled(enabled);
+          localStorage.setItem("portfolio_sound", enabled ? "on" : "off");
           return enabled;
         },
         trackEasterEgg,
+        fontSize,
+        onFontSizeChange: (size: string) => {
+          const s = size as FontSize;
+          setFontSize(s);
+          localStorage.setItem("portfolio_fontsize", s);
+          applyFontSize(s);
+        },
       };
 
       const result = executeCommand(trimmed, context);
@@ -521,6 +642,13 @@ export function Terminal() {
         setMode(result.switchMode);
       }
 
+      if (result.switchChannel) {
+        // Dispatch event for CRTMonitorScene to handle
+        window.dispatchEvent(
+          new CustomEvent("channel-change", { detail: { channel: result.switchChannel } })
+        );
+      }
+
       if (result.startGame) {
         setGameMode(result.startGame);
         trackGame(result.startGame);
@@ -540,18 +668,95 @@ export function Terminal() {
         return;
       }
 
+      if (result.startMeltdown) {
+        setInputValue("");
+        // Show the deletion text first
+        setHistory((prev) => [
+          ...prev,
+          { id: uid(), content: trimmed, type: "output", animate: false },
+          { id: uid(), content: result.output, type: "output", animate: false },
+        ]);
+        // Start visual meltdown after a brief pause
+        setTimeout(() => {
+          setMeltdownActive(true);
+          soundManager.meltdown();
+          window.dispatchEvent(new CustomEvent("meltdown", { detail: { phase: "start" } }));
+        }, 800);
+        // End meltdown and switch to glitch theme
+        setTimeout(() => {
+          setMeltdownActive(false);
+          window.dispatchEvent(new CustomEvent("meltdown", { detail: { phase: "end" } }));
+          const glitchTheme = getTheme("glitch");
+          if (glitchTheme) {
+            applyTheme(glitchTheme);
+            setCurrentTheme("glitch");
+          }
+          setHistory((prev) => [
+            ...prev,
+            {
+              id: uid(),
+              content: [
+                "",
+                "  ░░░░ NEW UNLOCK ░░░░",
+                "",
+                "  Theme 'glitch' activated.",
+                "  Command 'restore' is now available.",
+              ].join("\n"),
+              type: "system",
+              animate: false,
+            },
+          ]);
+        }, 3500);
+        return;
+      }
+
+      if (result.startRestore) {
+        setInputValue("");
+        const sequence = getRecoverySequence();
+        let delay = 0;
+        for (const line of sequence) {
+          delay += line.delay;
+          setTimeout(() => {
+            setHistory((prev) => [
+              ...prev,
+              { id: uid(), content: line.text, type: "system", animate: false },
+            ]);
+          }, delay);
+        }
+        // Reset theme to amber and play restore sound
+        setTimeout(() => {
+          const amberTheme = getTheme("amber");
+          if (amberTheme) {
+            applyTheme(amberTheme);
+            setCurrentTheme("amber");
+          }
+          soundManager.restoreComplete();
+        }, delay + 200);
+        return;
+      }
+
+      if (result.startEditor) {
+        setEditorFile(result.startEditor);
+        setInputValue("");
+        return;
+      }
+
       if (result.confirmReset) {
         setPendingConfirm("reset");
       }
 
       if (result.unlockAll) {
+        grantUnlock("glitch_theme");
+        grantUnlock("editor");
+        grantUnlock("channels");
+        window.dispatchEvent(new CustomEvent("konami-unlocked"));
         updateAchievements(() => ({
           commandsUsed: new Set([
             "help", "ls", "cd", "cat", "pwd", "tree", "about",
             "experience", "skills", "projects", "contact", "theme",
             "neofetch", "history", "achievements",
           ]),
-          easterEggsFound: new Set(["sudo", "rm_rf", "exit", "cowsay"]),
+          easterEggsFound: new Set(["sudo", "rm_rf", "exit", "cowsay", "konami", "editor_vim"]),
           themesUsed: new Set(["amber", "green", "blue", "matrix", "dracula"]),
           gamesPlayed: new Set(["snake"]),
           totalCommands: 50,
@@ -590,6 +795,7 @@ export function Terminal() {
       currentTheme,
       commandHistory,
       soundEnabled,
+      fontSize,
       trackCommand,
       trackDirectory,
       trackFile,
@@ -681,35 +887,70 @@ export function Terminal() {
     setShowAutocomplete(false);
   }, []);
 
-  // Game exit handler (snake)
+  // Game exit handler — returns to GUI or terminal depending on launch source
   const handleGameExit = useCallback(
     (score: number) => {
       setGameMode(null);
       soundManager.gameOver();
-      setHistory((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          content: `  Game over! Final score: ${score}`,
-          type: "system",
-          animate: false,
-        },
-      ]);
+      if (gameLaunchedFromGuiRef.current) {
+        gameLaunchedFromGuiRef.current = false;
+        setGuiMode(true);
+      } else {
+        setHistory((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            content: `  Game over! Final score: ${score}`,
+            type: "system",
+            animate: false,
+          },
+        ]);
+      }
     },
     []
   );
 
   // Render games
   if (gameMode) {
-    const GameComponent = {
+    const gameComponents: Record<string, React.ComponentType<{ onExit: (score: number) => void }>> = {
       snake: SnakeGame,
       invaders: InvadersGame,
       breakout: BreakoutGame,
-    }[gameMode];
+      duke: DukeGame,
+    };
+    const GameComponent = gameComponents[gameMode];
+    if (!GameComponent) return null;
 
     return (
       <div ref={containerRef} className="flex flex-col h-full font-mono">
         <GameComponent onExit={handleGameExit} />
+      </div>
+    );
+  }
+
+  // Render editor
+  if (editorFile) {
+    return (
+      <div ref={containerRef} className="flex flex-col h-full font-mono">
+        <Editor
+          filePath={editorFile}
+          onExit={() => {
+            setEditorFile(null);
+            setHistory((prev) => [
+              ...prev,
+              { id: uid(), content: "  File saved.", type: "system", animate: false },
+            ]);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Render mini boot animation
+  if (miniBoot) {
+    return (
+      <div ref={containerRef} className="flex flex-col h-full font-mono items-center justify-center mini-boot-animation">
+        <div className="mini-boot-line" />
       </div>
     );
   }
@@ -719,7 +960,18 @@ export function Terminal() {
     return (
       <div ref={containerRef} className="flex flex-col h-full font-mono">
         <GuiMode
-          onExit={() => setGuiMode(false)}
+          onExit={() => {
+            setGuiMode(false);
+            // When switching to terminal for the first time, run the text boot
+            if (!isBooting && history.length === 0) {
+              setHistory([{
+                id: uid(),
+                content: 'System ready. Type "help" to see available commands.',
+                type: "system",
+                animate: false,
+              }]);
+            }
+          }}
           currentTheme={currentTheme}
           onThemeChange={(name: string) => {
             setCurrentTheme(name);
@@ -728,19 +980,49 @@ export function Terminal() {
           achievementState={achievementState}
           soundEnabled={soundEnabled}
           onSoundToggle={() => {
-            setSoundEnabled(soundManager.toggle());
+            const enabled = soundManager.toggle();
+            setSoundEnabled(enabled);
+            localStorage.setItem("portfolio_sound", enabled ? "on" : "off");
           }}
           sessionStart={sessionStartRef.current}
+          onStartGame={(game: string) => {
+            gameLaunchedFromGuiRef.current = true;
+            setGuiMode(false);
+            setGameMode(game as "snake" | "invaders" | "breakout" | "duke");
+            trackGame(game);
+          }}
+          fs={fsRef.current}
+          allUnlocked={isFullyUnlocked(achievementState)}
+          isMobile={responsive.isMobile}
+          fontSize={fontSize}
+          onFontSizeChange={(size: string) => {
+            const s = size as FontSize;
+            setFontSize(s);
+            localStorage.setItem("portfolio_fontsize", s);
+            applyFontSize(s);
+          }}
         />
       </div>
     );
   }
 
   const currentPath = fsRef.current.getPromptPath();
+  const mobilePortrait = responsive.isMobile && responsive.isPortrait;
 
   return (
-    <div ref={containerRef} className="flex h-full font-mono">
-      <div className="flex flex-col flex-1 min-w-0">
+    <div ref={containerRef} className={`flex ${mobilePortrait ? "flex-col" : ""} h-full font-mono`}>
+      {mobilePortrait && showPanel && (
+        <InfoPanel
+          compact
+          fs={fsRef.current}
+          achievementState={achievementState}
+          themeName={currentTheme}
+          soundEnabled={soundEnabled}
+          sessionStart={sessionStartRef.current}
+        />
+      )}
+      <div className={`flex flex-col flex-1 min-w-0 ${meltdownActive ? "meltdown-active" : ""}`}>
+        {meltdownActive && <div className="meltdown-static" />}
         <TerminalOutput
           lines={history}
           onTypingComplete={handleTypingComplete}
@@ -764,7 +1046,7 @@ export function Terminal() {
           showAutocomplete={showAutocomplete}
         />
       </div>
-      {showPanel && (
+      {!mobilePortrait && showPanel && (
         <InfoPanel
           fs={fsRef.current}
           achievementState={achievementState}

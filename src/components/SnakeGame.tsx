@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface SnakeGameProps {
   onExit: (score: number) => void;
@@ -166,9 +167,11 @@ export function SnakeGame({ onExit }: SnakeGameProps) {
 
   lines.push("+" + "-".repeat(GRID_W) + "+");
 
+  const { isMobile } = useResponsive();
+
   return (
-    <div className="flex flex-col h-full p-4 terminal-text overflow-hidden">
-      <pre className="font-mono text-sm leading-tight m-0">
+    <div className={`flex flex-col h-full ${isMobile ? "p-1" : "p-4"} terminal-text overflow-hidden`}>
+      <pre className={`font-mono ${isMobile ? "text-crt-small" : "text-crt-base"} leading-tight m-0`}>
         {`  SNAKE  |  Score: ${score}  |  WASD/Arrows: move, Q: quit\n\n`}
         {lines.join("\n")}
         {gameOver

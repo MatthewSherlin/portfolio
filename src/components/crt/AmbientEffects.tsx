@@ -9,6 +9,8 @@ import {
   PARTICLE_CONFIG,
 } from "@/lib/crt-config";
 
+const DEG2RAD = Math.PI / 180;
+
 function DustParticles() {
   const pointsRef = useRef<THREE.Points>(null);
   const cfg = PARTICLE_CONFIG;
@@ -93,7 +95,7 @@ function ColorCycler({
   glowLightRef,
   fillLightRef,
 }: {
-  glowLightRef: React.RefObject<THREE.PointLight | null>;
+  glowLightRef: React.RefObject<THREE.SpotLight | null>;
   fillLightRef: React.RefObject<THREE.PointLight | null>;
 }) {
   const discoModeRef = useRef(false);
@@ -127,65 +129,123 @@ function ColorCycler({
 
 export function AmbientEffects() {
   const deskY = -BEZEL_HEIGHT / 2 - 0.39;
-  const glowLightRef = useRef<THREE.PointLight>(null);
+  const glowLightRef = useRef<THREE.SpotLight>(null);
+  const glowTargetRef = useRef<THREE.Object3D>(null);
   const fillLightRef = useRef<THREE.PointLight>(null);
+  const bezelGlowRef = useRef<THREE.PointLight>(null);
 
-  // Listen for theme changes — only update screen glow light.
-  // Fill light stays warm neutral so the monitor body keeps its natural color.
+  const powerOnRef = useRef(true);
+
+  // Listen for theme changes — update forward glow AND bezel spill light.
   useEffect(() => {
     const handler = (e: Event) => {
       const theme = (e as CustomEvent).detail;
+      if (!powerOnRef.current) return; // Don't update colors while off
       if (glowLightRef.current) {
         glowLightRef.current.color.set(theme.threeGlow);
+      }
+      if (bezelGlowRef.current) {
+        bezelGlowRef.current.color.set(theme.threeGlow);
       }
     };
     window.addEventListener("themechange", handler);
     return () => window.removeEventListener("themechange", handler);
   }, []);
 
+  // Listen for power toggle — kill/restore screen glow lights
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const on = (e as CustomEvent).detail.on;
+      powerOnRef.current = on;
+      if (glowLightRef.current) {
+        glowLightRef.current.intensity = on ? CRT_CONFIG.glowIntensity * 2.8 : 0;
+      }
+      if (bezelGlowRef.current) {
+        bezelGlowRef.current.intensity = on ? 0.8 : 0;
+      }
+    };
+    window.addEventListener("power-toggle", handler);
+    return () => window.removeEventListener("power-toggle", handler);
+  }, []);
+
+  // Point the SpotLight at its target once both are mounted
+  useEffect(() => {
+    if (glowLightRef.current && glowTargetRef.current) {
+      glowLightRef.current.target = glowTargetRef.current;
+    }
+  }, []);
+
   return (
     <group>
       {/* Ambient light for overall scene visibility */}
-      <ambientLight intensity={0.35} color={0x9999bb} />
+      <ambientLight intensity={0.3} color={0xdddde8} />
 
-      {/* Screen glow -- main light */}
-      <pointLight
+      {/* Key light — illuminates the monitor body from above-front */}
+      <directionalLight
+        position={[1, 2, 2.5]}
+        intensity={0.8}
+        color={0xfff4e8}
+      />
+      {/* Fill light from the opposite side to reduce harsh shadows */}
+      <directionalLight
+        position={[-1, 0.5, 2]}
+        intensity={0.3}
+        color={0xe8e0f0}
+      />
+
+      {/* Screen glow — SpotLight aimed FORWARD from screen surface.
+          A real CRT emits light into the room, not onto its own body. */}
+      <spotLight
         ref={glowLightRef}
-        position={[0, 0, 0.8]}
-        intensity={CRT_CONFIG.glowIntensity * 2.4}
+        position={[0, 0, 0.3]}
+        intensity={CRT_CONFIG.glowIntensity * 2.8}
         color={0xffb000}
-        distance={5}
+        distance={7}
+        decay={2}
+        angle={75 * DEG2RAD}
+        penumbra={0.7}
+      />
+      {/* SpotLight target — forward and slightly down (desk bounce) */}
+      <object3D ref={glowTargetRef} position={[0, -0.2, 3.5]} />
+
+      {/* Screen spill — theme-colored light that illuminates the bezel/case */}
+      <pointLight
+        ref={bezelGlowRef}
+        position={[0, 0, 0.2]}
+        intensity={0.8}
+        color={0xffb000}
+        distance={2.5}
         decay={2}
       />
 
-      {/* Fill light from below (bounce off desk) */}
+      {/* Fill light from below (warm neutral — NOT theme-colored) */}
       <pointLight
         ref={fillLightRef}
         position={[0, deskY + 0.1, 0.8]}
-        intensity={1.2}
-        color={0xffb000}
-        distance={3}
+        intensity={1.5}
+        color={0xffd9a0}
+        distance={4}
         decay={2}
       />
 
-      {/* Desk surface */}
+      {/* Desk surface — dark wood */}
       <mesh
         position={[0, deskY, 0.2]}
         rotation={[-Math.PI / 2, 0, 0]}
       >
         <planeGeometry args={[5, 3]} />
         <meshStandardMaterial
-          color={0x3d3228}
-          roughness={0.88}
-          metalness={0.0}
+          color={0x2a2018}
+          roughness={0.85}
+          metalness={0.02}
         />
       </mesh>
 
-      {/* Back wall (very far, very dark) */}
+      {/* Back wall */}
       <mesh position={[0, 0.5, -2]}>
         <planeGeometry args={[8, 5]} />
         <meshStandardMaterial
-          color={0x1e1e1e}
+          color={0x151515}
           roughness={1}
           metalness={0}
         />

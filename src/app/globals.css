@@ -15,6 +15,18 @@
   --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
 }
 
+/* --- Font Size Variables (dynamic, set by applyFontSize) --- */
+:root {
+  --font-base: 14px;
+  --font-small: 12px;
+  --font-tiny: 10px;
+}
+
+/* Font size utility classes for dynamic scaling */
+.text-crt-base { font-size: var(--font-base); }
+.text-crt-small { font-size: var(--font-small); }
+.text-crt-tiny { font-size: var(--font-tiny); }
+
 /* --- Global Resets --- */
 * {
   box-sizing: border-box;
@@ -32,7 +44,19 @@ body {
   font-family: var(--font-mono);
   overflow: hidden;
   min-height: 100vh;
-  cursor: default;
+  cursor: var(--cursor-arrow, url('/cursors/arrow.svg') 1 1, default);
+}
+
+/* Retro pixel-art pointer hand for interactive elements */
+button,
+a,
+select,
+summary,
+[role="button"],
+input[type="submit"],
+input[type="button"],
+.cursor-pointer {
+  cursor: var(--cursor-pointer, url('/cursors/pointer.svg') 11 1, pointer);
 }
 
 /* --- Terminal Text (theme-aware glow) --- */
@@ -92,52 +116,383 @@ body {
   background: rgba(var(--color-crt-glow-rgb), 0.5);
 }
 
-/* Firefox scrollbar + bottom-align terminal content */
+/* Firefox scrollbar */
 .terminal-output {
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--color-crt-glow-rgb), 0.3) transparent;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
 }
 
 /* --- CRT Screen Container --- */
 .crt-screen {
   background: var(--color-crt-bg);
   overflow: hidden;
-  border-radius: 8px;
+  font-size: var(--font-base);
+  border-radius: 22px;
   padding: 15px;
+  position: relative;
+  /* Strong vignette + phosphor edge glow */
+  box-shadow:
+    inset 0 0 20px rgba(var(--color-crt-glow-rgb), 0.05),
+    inset 0 0 50px rgba(0, 0, 0, 0.55),
+    inset 0 0 100px rgba(0, 0, 0, 0.4),
+    inset 0 0 180px rgba(0, 0, 0, 0.25);
+  cursor: var(--cursor-arrow, url('/cursors/arrow.svg') 1 1, default);
 }
 
-.crt-scanlines {
+/* Scanlines overlay */
+.crt-screen::before {
+  content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0px,
-    transparent 1px,
-    rgba(0, 0, 0, 0.06) 1px,
-    rgba(0, 0, 0, 0.06) 2px
+  background:
+    /* Scanlines */
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.15) 2px,
+      rgba(0, 0, 0, 0.15) 4px
+    ),
+    /* Subtle center-bright radial (CRT phosphor bulge) */
+    radial-gradient(
+      ellipse 70% 60% at 50% 50%,
+      rgba(255, 255, 255, 0.03) 0%,
+      transparent 70%
+    );
+  border-radius: 22px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Glass reflection — realistic curved highlight band */
+.crt-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    /* Primary reflection — soft curved band across upper third */
+    radial-gradient(
+      ellipse 120% 40% at 35% 20%,
+      rgba(255, 255, 255, 0.06) 0%,
+      rgba(255, 255, 255, 0.02) 40%,
+      transparent 70%
+    ),
+    /* Secondary faint highlight — lower right */
+    radial-gradient(
+      ellipse 80% 30% at 70% 85%,
+      rgba(255, 255, 255, 0.015) 0%,
+      transparent 60%
+    );
+  border-radius: 22px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+
+/* --- CRT Sweep Line (electron beam refresh bar) --- */
+@keyframes crt-sweep {
+  0% { top: -8%; }
+  100% { top: 108%; }
+}
+
+.crt-sweep-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.015) 40%,
+    rgba(255, 255, 255, 0.03) 50%,
+    rgba(255, 255, 255, 0.015) 60%,
+    transparent 100%
   );
   pointer-events: none;
-  z-index: 10;
-  border-radius: inherit;
+  z-index: 11;
+  animation: crt-sweep 8s linear infinite;
 }
 
-.crt-vignette {
+/* --- Terminal Glow Button (low-fps retro pulse) --- */
+@keyframes terminal-glow {
+  0%, 100% {
+    text-shadow:
+      0 0 2px rgba(var(--color-crt-glow-rgb), 0.4),
+      0 0 6px rgba(var(--color-crt-glow-rgb), 0.15);
+    border-color: rgba(var(--color-crt-glow-rgb), 0.5);
+  }
+  50% {
+    text-shadow:
+      0 0 4px rgba(var(--color-crt-glow-rgb), 0.9),
+      0 0 12px rgba(var(--color-crt-glow-rgb), 0.5),
+      0 0 20px rgba(var(--color-crt-glow-rgb), 0.2);
+    border-color: rgba(var(--color-crt-glow-rgb), 1);
+  }
+}
+
+.terminal-glow-btn {
+  animation: terminal-glow 2s steps(4) infinite;
+}
+
+/* --- Mini Boot Animation (CRT power-on line) --- */
+@keyframes boot-line-expand {
+  0% {
+    width: 0;
+    height: 2px;
+    opacity: 1;
+  }
+  30% {
+    width: 60%;
+    height: 2px;
+    opacity: 1;
+  }
+  70% {
+    width: 80%;
+    height: 2px;
+    opacity: 1;
+  }
+  85% {
+    width: 90%;
+    height: 40%;
+    opacity: 1;
+  }
+  100% {
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+}
+
+.mini-boot-animation {
+  background: #000;
+}
+
+.mini-boot-line {
+  background: var(--color-crt-text);
+  box-shadow:
+    0 0 20px rgba(var(--color-crt-glow-rgb), 0.8),
+    0 0 60px rgba(var(--color-crt-glow-rgb), 0.4);
+  animation: boot-line-expand 2.5s ease-in-out forwards;
+}
+
+/* --- CRT Power Off/On Animations --- */
+@keyframes crt-off {
+  0% {
+    transform: scale(1, 1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  40% {
+    transform: scale(1, 0.005);
+    opacity: 1;
+    filter: brightness(3);
+  }
+  70% {
+    transform: scale(0.3, 0.005);
+    opacity: 0.8;
+    filter: brightness(2);
+  }
+  100% {
+    transform: scale(0, 0);
+    opacity: 0;
+    filter: brightness(0);
+  }
+}
+
+@keyframes crt-on {
+  0% {
+    transform: scale(0, 0);
+    opacity: 0;
+    filter: brightness(0);
+  }
+  30% {
+    transform: scale(0.3, 0.005);
+    opacity: 0.8;
+    filter: brightness(2);
+  }
+  60% {
+    transform: scale(1, 0.005);
+    opacity: 1;
+    filter: brightness(3);
+  }
+  100% {
+    transform: scale(1, 1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+.crt-turning-off > :first-child {
+  animation: crt-off 0.3s ease-in forwards;
+  transform-origin: center center;
+}
+
+.crt-turning-on > :first-child {
+  animation: crt-on 0.4s ease-out forwards;
+  transform-origin: center center;
+}
+
+/* Screen-off state (power button toggled) */
+.crt-screen-off {
+  background: #000 !important;
+}
+.crt-screen-off > * {
+  visibility: hidden;
+}
+
+/* --- Theme Change Glitch (filter-only, no position shifting) --- */
+@keyframes theme-glitch {
+  0% { filter: none; }
+  20% { filter: hue-rotate(90deg) brightness(1.3); }
+  40% { filter: hue-rotate(180deg) brightness(0.8); }
+  60% { filter: saturate(2) brightness(1.2); }
+  80% { filter: hue-rotate(270deg); }
+  100% { filter: none; }
+}
+
+.theme-glitch > :first-child {
+  animation: theme-glitch 0.2s steps(3) forwards;
+}
+
+/* --- System Meltdown (rm -rf /) --- */
+@keyframes meltdown-shake {
+  0%, 100% { transform: translate(0, 0) skewX(0deg); }
+  10% { transform: translate(-3px, 2px) skewX(1deg); }
+  20% { transform: translate(5px, -1px) skewX(-2deg); }
+  30% { transform: translate(-2px, 4px) skewX(1.5deg); }
+  40% { transform: translate(4px, -3px) skewX(-1deg); }
+  50% { transform: translate(-5px, 1px) skewX(2deg); }
+  60% { transform: translate(3px, -2px) skewX(-1.5deg); }
+  70% { transform: translate(-1px, 3px) skewX(1deg); }
+  80% { transform: translate(2px, -4px) skewX(-2deg); }
+  90% { transform: translate(-4px, 2px) skewX(1.5deg); }
+}
+
+@keyframes meltdown-flicker {
+  0% { opacity: 1; }
+  5% { opacity: 0.1; }
+  10% { opacity: 0.9; }
+  15% { opacity: 0.3; }
+  20% { opacity: 1; }
+  30% { opacity: 0.05; }
+  35% { opacity: 0.8; }
+  50% { opacity: 0.2; }
+  55% { opacity: 1; }
+  70% { opacity: 0.1; }
+  75% { opacity: 0.7; }
+  90% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+@keyframes meltdown-color {
+  0% { filter: none; }
+  15% { filter: hue-rotate(90deg) saturate(3) brightness(1.5); }
+  30% { filter: invert(1) hue-rotate(180deg); }
+  45% { filter: saturate(5) contrast(2); }
+  60% { filter: hue-rotate(270deg) brightness(0.5); }
+  75% { filter: invert(1) saturate(3) brightness(2); }
+  90% { filter: hue-rotate(180deg) contrast(3); }
+  100% { filter: none; }
+}
+
+.meltdown-active {
+  animation:
+    meltdown-shake 0.15s infinite,
+    meltdown-flicker 0.3s steps(2) infinite,
+    meltdown-color 0.8s steps(4) infinite;
+}
+
+.meltdown-static {
   position: absolute;
   inset: 0;
-  box-shadow:
-    inset 0 0 80px rgba(0, 0, 0, 0.5),
-    inset 0 0 160px rgba(0, 0, 0, 0.3);
+  z-index: 25;
   pointer-events: none;
-  z-index: 10;
-  border-radius: inherit;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 2px
+  );
+  mix-blend-mode: overlay;
+  animation: meltdown-flicker 0.1s steps(3) infinite;
 }
 
 /* --- Accessibility --- */
 @media (prefers-reduced-motion: reduce) {
   .block-cursor::after {
     animation: none !important;
+  }
+  .terminal-glow-btn {
+    animation: none !important;
+  }
+  .mini-boot-line {
+    animation: none !important;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+  .crt-sweep-line {
+    animation: none !important;
+    display: none;
+  }
+}
+
+/* --- Responsive: Mobile --- */
+@media (max-width: 639px) {
+  .crt-screen {
+    border-radius: 12px;
+    padding: 6px;
+  }
+  .crt-screen::before {
+    border-radius: 12px;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 1px,
+        rgba(0, 0, 0, 0.1) 1px,
+        rgba(0, 0, 0, 0.1) 2px
+      ),
+      radial-gradient(
+        ellipse 70% 60% at 50% 50%,
+        rgba(255, 255, 255, 0.03) 0%,
+        transparent 70%
+      );
+  }
+  .crt-screen::after {
+    border-radius: 12px;
+  }
+  .terminal-text {
+    text-shadow:
+      0 0 3px rgba(var(--color-crt-glow-rgb), 0.8),
+      0 0 8px rgba(var(--color-crt-glow-rgb), 0.3);
+  }
+  .terminal-output::-webkit-scrollbar {
+    width: 3px;
+  }
+}
+
+/* --- Responsive: Tablet --- */
+@media (min-width: 640px) and (max-width: 1024px) {
+  .crt-screen {
+    border-radius: 16px;
+    padding: 10px;
+  }
+  .crt-screen::before {
+    border-radius: 16px;
+  }
+  .crt-screen::after {
+    border-radius: 16px;
+  }
+}
+
+/* --- Touch devices: disable hover effects --- */
+@media (hover: none) {
+  .terminal-glow-btn {
+    animation: none;
+    text-shadow:
+      0 0 3px rgba(var(--color-crt-glow-rgb), 0.6),
+      0 0 8px rgba(var(--color-crt-glow-rgb), 0.3);
+    border-color: rgba(var(--color-crt-glow-rgb), 0.7);
   }
 }
