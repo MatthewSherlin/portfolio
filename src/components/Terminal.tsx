@@ -929,7 +929,7 @@ export function Terminal() {
     if (!GameComponent) return null;
 
     return (
-      <div ref={containerRef} className="flex flex-col h-full font-mono">
+      <div ref={containerRef} className="flex flex-col h-full font-mono overflow-hidden">
         <GameComponent onExit={handleGameExit} />
       </div>
     );
@@ -938,7 +938,7 @@ export function Terminal() {
   // Render editor
   if (editorFile) {
     return (
-      <div ref={containerRef} className="flex flex-col h-full font-mono">
+      <div ref={containerRef} className="flex flex-col h-full font-mono overflow-hidden">
         <Editor
           filePath={editorFile}
           onExit={() => {
@@ -956,7 +956,7 @@ export function Terminal() {
   // Render mini boot animation
   if (miniBoot) {
     return (
-      <div ref={containerRef} className="flex flex-col h-full font-mono items-center justify-center mini-boot-animation">
+      <div ref={containerRef} className="flex flex-col h-full font-mono overflow-hidden items-center justify-center mini-boot-animation">
         <div className="mini-boot-line" />
       </div>
     );
@@ -965,7 +965,7 @@ export function Terminal() {
   // Render GUI mode
   if (guiMode) {
     return (
-      <div ref={containerRef} className="flex flex-col h-full font-mono">
+      <div ref={containerRef} className="flex flex-col h-full font-mono overflow-hidden">
         <GuiMode
           onExit={() => {
             setGuiMode(false);
@@ -1017,7 +1017,7 @@ export function Terminal() {
   const mobilePortrait = responsive.isMobile && responsive.isPortrait;
 
   return (
-    <div ref={containerRef} className={`flex ${mobilePortrait ? "flex-col" : ""} h-full font-mono`}>
+    <div ref={containerRef} className={`flex ${mobilePortrait ? "flex-col" : ""} h-full font-mono overflow-hidden`}>
       {mobilePortrait && showPanel && (
         <InfoPanel
           compact
@@ -1028,7 +1028,7 @@ export function Terminal() {
           sessionStart={sessionStartRef.current}
         />
       )}
-      <div className={`flex flex-col flex-1 min-w-0 ${meltdownActive ? "meltdown-active" : ""}`}>
+      <div className={`flex flex-col flex-1 min-w-0 min-h-0 ${meltdownActive ? "meltdown-active" : ""}`}>
         {meltdownActive && <div className="meltdown-static" />}
         <TerminalOutput
           lines={history}

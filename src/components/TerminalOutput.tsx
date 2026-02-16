@@ -122,7 +122,7 @@ export function TerminalOutput({
   return (
     <div
       ref={containerRef}
-      className="terminal-output flex-1 overflow-y-auto p-2 sm:p-4 pb-0"
+      className="terminal-output flex-1 overflow-y-auto px-1 py-2 sm:p-4 pb-0"
       onScroll={handleScroll}
       onClick={onSkip}
     >

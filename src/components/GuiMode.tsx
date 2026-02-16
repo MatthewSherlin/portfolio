@@ -235,7 +235,7 @@ export function GuiMode({
         {/* Content */}
         <div className={`flex-1 ${isMobile ? "p-2" : "p-3"} overflow-y-auto text-crt-small leading-relaxed`}>
           {!activeSection && (
-            <div className="flex flex-col items-center justify-center h-full" style={{ color: "var(--color-crt-dim)" }}>
+            <div className={`flex flex-col items-center ${isMobile ? "justify-start pt-8" : "justify-center"} h-full`} style={{ color: "var(--color-crt-dim)" }}>
               <div className="text-crt-base mb-2">{data.name}</div>
               <div className="mb-4">{data.title}</div>
               <div className="text-center max-w-xs">{data.summary}</div>
