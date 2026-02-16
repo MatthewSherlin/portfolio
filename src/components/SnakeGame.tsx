@@ -82,6 +82,37 @@ export function SnakeGame({ onExit }: SnakeGameProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [handleExit]);
 
+  // Touch swipe handler for mobile
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    const handleTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      if (Math.max(absDx, absDy) < 30) return;
+      const d = dirRef.current;
+      if (absDx > absDy) {
+        if (dx > 0 && d !== "left") nextDirRef.current = "right";
+        else if (dx < 0 && d !== "right") nextDirRef.current = "left";
+      } else {
+        if (dy > 0 && d !== "up") nextDirRef.current = "down";
+        else if (dy < 0 && d !== "down") nextDirRef.current = "up";
+      }
+    };
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, []);
+
   // Game loop
   useEffect(() => {
     if (gameOver) return;
@@ -169,15 +200,50 @@ export function SnakeGame({ onExit }: SnakeGameProps) {
 
   const { isMobile } = useResponsive();
 
+  const dpadBtn = "w-11 h-9 flex items-center justify-center border border-[var(--color-crt-dim)] active:bg-[var(--color-crt-text)] active:text-[var(--color-crt-bg)] text-crt-base select-none";
+
   return (
     <div className={`flex flex-col h-full ${isMobile ? "p-1" : "p-4"} terminal-text overflow-hidden`}>
-      <pre className={`font-mono ${isMobile ? "text-crt-small" : "text-crt-base"} leading-tight m-0`}>
-        {`  SNAKE  |  Score: ${score}  |  WASD/Arrows: move, Q: quit\n\n`}
+      <pre className={`font-mono ${isMobile ? "text-crt-tiny" : "text-crt-base"} leading-tight m-0 flex-1 min-h-0`}>
+        {isMobile
+          ? `  SNAKE | Score: ${score}\n\n`
+          : `  SNAKE  |  Score: ${score}  |  WASD/Arrows: move, Q: quit\n\n`
+        }
         {lines.join("\n")}
         {gameOver
-          ? `\n\n  GAME OVER! Final score: ${score}\n  Press Q to return to terminal.`
+          ? isMobile
+            ? `\n\n  GAME OVER! Score: ${score}`
+            : `\n\n  GAME OVER! Final score: ${score}\n  Press Q to return to terminal.`
           : ""}
       </pre>
+      {isMobile && (
+        <div className="flex items-center justify-center gap-6 py-2 shrink-0 select-none" style={{ touchAction: "manipulation" }}>
+          <div className="flex flex-col items-center">
+            <button
+              onTouchStart={(e) => { e.preventDefault(); if (dirRef.current !== "down") nextDirRef.current = "up"; }}
+              className={dpadBtn}
+            >&#9650;</button>
+            <div className="flex gap-8">
+              <button
+                onTouchStart={(e) => { e.preventDefault(); if (dirRef.current !== "right") nextDirRef.current = "left"; }}
+                className={dpadBtn}
+              >&#9664;</button>
+              <button
+                onTouchStart={(e) => { e.preventDefault(); if (dirRef.current !== "left") nextDirRef.current = "right"; }}
+                className={dpadBtn}
+              >&#9654;</button>
+            </div>
+            <button
+              onTouchStart={(e) => { e.preventDefault(); if (dirRef.current !== "up") nextDirRef.current = "down"; }}
+              className={dpadBtn}
+            >&#9660;</button>
+          </div>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); handleExit(); }}
+            className="w-14 h-9 flex items-center justify-center border border-[var(--color-crt-dim)] active:bg-[var(--color-crt-text)] active:text-[var(--color-crt-bg)] text-crt-small select-none"
+          >{gameOver ? "OK" : "QUIT"}</button>
+        </div>
+      )}
     </div>
   );
 }

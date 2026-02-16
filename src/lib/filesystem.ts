@@ -12,7 +12,7 @@ interface FSNode {
   modified: string;
 }
 
-function file(name: string, content: string, modified = "Feb 05 2026"): FSNode {
+function file(name: string, content: string, modified = "Feb 16 2026"): FSNode {
   return {
     name,
     type: "file",
@@ -26,7 +26,7 @@ function file(name: string, content: string, modified = "Feb 05 2026"): FSNode {
 function dir(
   name: string,
   children: FSNode[],
-  modified = "Feb 05 2026"
+  modified = "Feb 16 2026"
 ): FSNode {
   const map = new Map<string, FSNode>();
   children.forEach((c) => map.set(c.name, c));
@@ -165,7 +165,7 @@ export class VirtualFS {
             children: new Map(),
             permissions: "drwxrwxr-x",
             size: 4096,
-            modified: "Feb 10 2026",
+            modified: "Feb 16 2026",
           };
           current.children.set(dirName, child);
         }
@@ -180,7 +180,7 @@ export class VirtualFS {
         content,
         permissions: "-rw-rw-r--",
         size: content.length,
-        modified: "Feb 10 2026",
+        modified: "Feb 16 2026",
       });
     }
   }
@@ -283,10 +283,10 @@ export class VirtualFS {
       const lines = [`total ${entries.length}`];
       if (showHidden) {
         lines.push(
-          "drwxr-xr-x  1 visitor visitor   4096 Feb 05 2026 ."
+          "drwxr-xr-x  1 visitor visitor   4096 Feb 16 2026 ."
         );
         lines.push(
-          "drwxr-xr-x  1 visitor visitor   4096 Feb 05 2026 .."
+          "drwxr-xr-x  1 visitor visitor   4096 Feb 16 2026 .."
         );
       }
       for (const entry of entries) {

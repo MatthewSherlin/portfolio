@@ -98,17 +98,25 @@ export function TerminalOutput({
     scrollToBottom();
   }, [lines, scrollToBottom]);
 
-  // ResizeObserver: follow content growth during typewriter animation
+  // ResizeObserver: follow content growth during typewriter animation (debounced with rAF)
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
+    let rafId: number | null = null;
     const observer = new ResizeObserver(() => {
       if (!userScrolledRef.current) {
-        scrollToBottom();
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          scrollToBottom();
+          rafId = null;
+        });
       }
     });
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [scrollToBottom]);
 
   return (

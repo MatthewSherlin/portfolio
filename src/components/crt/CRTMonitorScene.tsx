@@ -142,6 +142,7 @@ export function CRTMonitorScene() {
   // Keep terminal input focused (only when on terminal channel)
   useEffect(() => {
     if (screenOff || currentChannel !== 1) return;
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
     const focusInput = () => {
       const input = terminalRef.current?.querySelector("input") as HTMLInputElement | null;
       if (input && !input.disabled && document.activeElement !== input) {
@@ -150,6 +151,18 @@ export function CRTMonitorScene() {
     };
 
     const timer = setTimeout(focusInput, 500);
+
+    // On touch devices, don't grab focus on every tap or on an interval —
+    // it causes keyboard flashing and interferes with scrolling.
+    // Only re-focus on keydown (for external keyboards).
+    if (isTouchDevice) {
+      window.addEventListener("keydown", focusInput, true);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("keydown", focusInput, true);
+      };
+    }
+
     window.addEventListener("pointerdown", focusInput, true);
     window.addEventListener("keydown", focusInput, true);
     const interval = setInterval(focusInput, 2000);
@@ -412,21 +425,23 @@ export function CRTMonitorScene() {
       />
       </>)}
 
-      {/* Three.js Canvas — monitor body BEHIND the terminal */}
-      <Canvas
-        style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
-        camera={{ position: [0, 0.05, 3.2], fov: screenBounds.fov }}
-        gl={{
-          antialias: true,
-          alpha: true,
-          powerPreference: isTouch ? "default" : "high-performance",
-        }}
-        dpr={[1, isTouch ? 1.25 : 1.5]}
-      >
-        <Suspense fallback={null}>
-          <SceneContents fov={screenBounds.fov} />
-        </Suspense>
-      </Canvas>
+      {/* Three.js Canvas — monitor body BEHIND the terminal (skip on portrait phones to save GPU/battery) */}
+      {!screenBounds.mobilePortrait && (
+        <Canvas
+          style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
+          camera={{ position: [0, 0.05, 3.2], fov: screenBounds.fov }}
+          gl={{
+            antialias: true,
+            alpha: true,
+            powerPreference: isTouch ? "default" : "high-performance",
+          }}
+          dpr={[1, isTouch ? 1.25 : 1.5]}
+        >
+          <Suspense fallback={null}>
+            <SceneContents fov={screenBounds.fov} />
+          </Suspense>
+        </Canvas>
+      )}
     </div>
   );
 }

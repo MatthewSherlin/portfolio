@@ -270,6 +270,7 @@ export function Terminal() {
   // Always keep input focused
   useEffect(() => {
     if (gameMode) return; // Don't steal focus during games
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
 
     const focusInput = () => {
       const input = containerRef.current?.querySelector("input");
@@ -288,10 +289,16 @@ export function Terminal() {
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("click", focusInput);
+    // On touch devices, don't auto-focus on tap — it opens the virtual
+    // keyboard and interferes with scrolling the terminal output
+    if (!isTouchDevice) {
+      document.addEventListener("click", focusInput);
+    }
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("click", focusInput);
+      if (!isTouchDevice) {
+        document.removeEventListener("click", focusInput);
+      }
     };
   }, [gameMode]); // eslint-disable-line react-hooks/exhaustive-deps
 

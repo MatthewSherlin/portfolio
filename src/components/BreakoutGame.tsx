@@ -259,20 +259,53 @@ export function BreakoutGame({ onExit }: BreakoutGameProps) {
 
   const { isMobile } = useResponsive();
 
+  const touchBtn = "h-9 flex items-center justify-center border border-[var(--color-crt-dim)] active:bg-[var(--color-crt-text)] active:text-[var(--color-crt-bg)] text-crt-base select-none";
+
   return (
     <div className={`flex flex-col h-full ${isMobile ? "p-1" : "p-4"} terminal-text overflow-hidden`}>
-      <pre className={`font-mono ${isMobile ? "text-crt-small" : "text-crt-base"} leading-tight m-0`}>
-        {`  BREAKOUT  |  Score: ${String(g.score).padStart(5, "0")}  |  Level: ${g.level}/${TOTAL_LEVELS}  |  Lives: ${livesStr}\n`}
-        {`  A/D or Arrows: move  |  Space: launch  |  Q: quit\n\n`}
+      <pre className={`font-mono ${isMobile ? "text-crt-tiny" : "text-crt-base"} leading-tight m-0 flex-1 min-h-0`}>
+        {isMobile
+          ? `  BREAKOUT | ${String(g.score).padStart(5, "0")} | L${g.level} | ${livesStr}\n\n`
+          : `  BREAKOUT  |  Score: ${String(g.score).padStart(5, "0")}  |  Level: ${g.level}/${TOTAL_LEVELS}  |  Lives: ${livesStr}\n`
+            + `  A/D or Arrows: move  |  Space: launch  |  Q: quit\n\n`
+        }
         {lines.join("\n")}
         {g.gameOver
-          ? g.won
-            ? `\n\n  VICTORY! All bricks destroyed! Final score: ${g.score}\n  Press Q to return to terminal.`
-            : `\n\n  GAME OVER! Final score: ${g.score}\n  Press Q to return to terminal.`
+          ? isMobile
+            ? g.won
+              ? `\n\n  VICTORY! Score: ${g.score}`
+              : `\n\n  GAME OVER! Score: ${g.score}`
+            : g.won
+              ? `\n\n  VICTORY! All bricks destroyed! Final score: ${g.score}\n  Press Q to return to terminal.`
+              : `\n\n  GAME OVER! Final score: ${g.score}\n  Press Q to return to terminal.`
           : g.paused
-            ? "\n\n  Press SPACE to launch ball..."
+            ? isMobile ? "\n\n  Tap GO to launch!" : "\n\n  Press SPACE to launch ball..."
             : ""}
       </pre>
+      {isMobile && (
+        <div className="flex items-center justify-center gap-3 py-2 shrink-0 select-none" style={{ touchAction: "manipulation" }}>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); dirRef.current = -3; }}
+            onTouchEnd={(e) => { e.preventDefault(); dirRef.current = 0; }}
+            onTouchCancel={() => { dirRef.current = 0; }}
+            className={`${touchBtn} w-14`}
+          >&#9664;</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); if (g.paused && !g.gameOver) g.paused = false; }}
+            className={`${touchBtn} w-14 text-crt-small`}
+          >GO</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); dirRef.current = 3; }}
+            onTouchEnd={(e) => { e.preventDefault(); dirRef.current = 0; }}
+            onTouchCancel={() => { dirRef.current = 0; }}
+            className={`${touchBtn} w-14`}
+          >&#9654;</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); handleExit(); }}
+            className={`${touchBtn} w-14 text-crt-small`}
+          >{g.gameOver ? "OK" : "QUIT"}</button>
+        </div>
+      )}
     </div>
   );
 }

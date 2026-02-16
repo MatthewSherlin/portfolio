@@ -21,7 +21,7 @@ export function Autocomplete({
 }: AutocompleteProps) {
   const selectedRef = useRef<HTMLDivElement>(null);
   const { isMobile } = useResponsive();
-  const maxVisible = isMobile ? 5 : 8;
+  const maxVisible = isMobile ? 4 : 8;
 
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });

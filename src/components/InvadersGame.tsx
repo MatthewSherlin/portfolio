@@ -367,18 +367,51 @@ export function InvadersGame({ onExit }: InvadersGameProps) {
 
   const { isMobile } = useResponsive();
 
+  const touchBtn = "h-9 flex items-center justify-center border border-[var(--color-crt-dim)] active:bg-[var(--color-crt-text)] active:text-[var(--color-crt-bg)] text-crt-base select-none";
+
   return (
     <div className={`flex flex-col h-full ${isMobile ? "p-1" : "p-4"} terminal-text overflow-hidden`}>
-      <pre className={`font-mono ${isMobile ? "text-crt-small" : "text-crt-base"} leading-tight m-0`}>
-        {`  SPACE INVADERS  |  Score: ${String(score).padStart(5, "0")}  |  Wave: ${wave}/3  |  Lives: ${livesStr}\n`}
-        {`  A/D or Arrows: move  |  Space: fire  |  Q: quit\n\n`}
+      <pre className={`font-mono ${isMobile ? "text-crt-tiny" : "text-crt-base"} leading-tight m-0 flex-1 min-h-0`}>
+        {isMobile
+          ? `  INVADERS | ${String(score).padStart(5, "0")} | W${wave} | ${livesStr}\n\n`
+          : `  SPACE INVADERS  |  Score: ${String(score).padStart(5, "0")}  |  Wave: ${wave}/3  |  Lives: ${livesStr}\n`
+            + `  A/D or Arrows: move  |  Space: fire  |  Q: quit\n\n`
+        }
         {lines.join("\n")}
         {gameOver
-          ? won
-            ? `\n\n  VICTORY! You defended Earth! Final score: ${score}\n  Press Q to return to terminal.`
-            : `\n\n  GAME OVER! Final score: ${score}\n  Press Q to return to terminal.`
+          ? isMobile
+            ? won
+              ? `\n\n  VICTORY! Score: ${score}`
+              : `\n\n  GAME OVER! Score: ${score}`
+            : won
+              ? `\n\n  VICTORY! You defended Earth! Final score: ${score}\n  Press Q to return to terminal.`
+              : `\n\n  GAME OVER! Final score: ${score}\n  Press Q to return to terminal.`
           : ""}
       </pre>
+      {isMobile && (
+        <div className="flex items-center justify-center gap-3 py-2 shrink-0 select-none" style={{ touchAction: "manipulation" }}>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); dirRef.current = -2; }}
+            onTouchEnd={(e) => { e.preventDefault(); dirRef.current = 0; }}
+            onTouchCancel={() => { dirRef.current = 0; }}
+            className={`${touchBtn} w-14`}
+          >&#9664;</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); shootRef.current = true; }}
+            className={`${touchBtn} w-16 text-crt-small`}
+          >FIRE</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); dirRef.current = 2; }}
+            onTouchEnd={(e) => { e.preventDefault(); dirRef.current = 0; }}
+            onTouchCancel={() => { dirRef.current = 0; }}
+            className={`${touchBtn} w-14`}
+          >&#9654;</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); handleExit(); }}
+            className={`${touchBtn} w-14 text-crt-small`}
+          >{gameOver ? "OK" : "QUIT"}</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -48,6 +48,30 @@ export function TerminalInput({
     }
   }, [disabled]);
 
+  // Scroll input into view when virtual keyboard opens on mobile
+  useEffect(() => {
+    if (!isMobile) return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const handleResize = () => {
+      if (document.activeElement === inputRef.current) {
+        setTimeout(() => {
+          inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 100);
+      }
+    };
+    viewport.addEventListener("resize", handleResize);
+    return () => viewport.removeEventListener("resize", handleResize);
+  }, [isMobile]);
+
+  const handleFocus = () => {
+    if (isMobile) {
+      setTimeout(() => {
+        inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 300);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Tab") {
       e.preventDefault();
@@ -116,6 +140,7 @@ export function TerminalInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
           disabled={disabled}
           className="flex-1 bg-transparent border-none outline-none terminal-text font-mono caret-crt-text"
           autoFocus

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getResumeData } from "@/lib/resume-data";
 import { themes, secretThemes, applyTheme } from "@/lib/themes";
 import {
@@ -101,6 +101,7 @@ export function GuiMode({
   onFontSizeChange,
 }: GuiModeProps) {
   const [activeSection, setActiveSection] = useState<Section>(null);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
   const [fileBrowserPath, setFileBrowserPath] = useState("~");
   const [fileViewContent, setFileViewContent] = useState<{ name: string; content: string } | null>(null);
   const data = getResumeData();
@@ -120,6 +121,13 @@ export function GuiMode({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onExit]);
+
+  // Auto-scroll active tab into view on mobile
+  useEffect(() => {
+    if (isMobile && activeTabRef.current) {
+      activeTabRef.current.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [activeSection, isMobile]);
 
   // Computed values for status bar + sections
   const unlocked = getUnlockedAchievements(achievementState);
@@ -185,22 +193,34 @@ export function GuiMode({
       <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
         {/* Sidebar — horizontal scroll on mobile, vertical on desktop */}
         {isMobile ? (
-          <div className="border-b border-[var(--color-crt-dim)] overflow-x-auto shrink-0">
-            <nav className="flex gap-0.5 p-1 min-w-max">
-              {[...contentSections, ...funSections, ...systemSections].map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => { click(); setActiveSection(activeSection === s.key ? null : s.key); }}
-                  className={`text-crt-small px-2 py-1 whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
-                    activeSection === s.key
-                      ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)]"
-                      : "hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)]"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </nav>
+          <div className="relative border-b border-[var(--color-crt-dim)] shrink-0">
+            <div className="overflow-x-auto">
+              <nav className="flex gap-0.5 p-1 min-w-max">
+                {[...contentSections, ...funSections, ...systemSections].map((s) => (
+                  <button
+                    key={s.key}
+                    ref={activeSection === s.key ? activeTabRef : undefined}
+                    onClick={() => { click(); setActiveSection(activeSection === s.key ? null : s.key); }}
+                    className={`text-crt-small px-2 py-1 whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
+                      activeSection === s.key
+                        ? "bg-[var(--color-crt-text)] text-[var(--color-crt-bg)]"
+                        : "hover:bg-[rgba(var(--color-crt-glow-rgb),0.1)]"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            {/* Scroll fade indicators */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-3 pointer-events-none"
+              style={{ background: "linear-gradient(to right, var(--color-crt-bg), transparent)" }}
+            />
+            <div
+              className="absolute right-0 top-0 bottom-0 w-3 pointer-events-none"
+              style={{ background: "linear-gradient(to left, var(--color-crt-bg), transparent)" }}
+            />
           </div>
         ) : (
           <nav className="w-36 border-r border-[var(--color-crt-dim)] p-2 shrink-0 overflow-y-auto">
